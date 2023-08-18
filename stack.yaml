@@ -1,0 +1,17 @@
+resolver: lts-20.26
+packages:
+- .
+extra-deps:
+- amazonka-2.0
+- amazonka-core-2.0
+- amazonka-rds-2.0
+- amazonka-sso-2.0
+- amazonka-sts-2.0
+- co-log-0.5.0.0
+- chronos-1.1.5
+- crypton-0.33
+- git: https://codeberg.org/aka_dude/effectful-zoo
+  commit: ea70bae3cc06f6fb7a09e607e6cb251165492f70
+  subdirs:
+  - effectful-co-log
+- typerep-map-0.6.0.0

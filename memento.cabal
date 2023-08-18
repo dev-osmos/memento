@@ -1,0 +1,80 @@
+cabal-version:  3.0
+name:           memento
+version:        0.0.1.0
+
+common c
+  default-language:
+    GHC2021
+  default-extensions:
+    BangPatterns
+    BinaryLiterals
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DuplicateRecordFields
+    EmptyCase
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    HexFloatLiterals
+    InstanceSigs
+    ImportQualifiedPost
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    NoFieldSelectors
+    NumericUnderscores
+    OverloadedRecordDot
+    OverloadedStrings
+    ScopedTypeVariables
+    StandaloneDeriving
+    Strict
+    TupleSections
+    TypeApplications
+    TypeOperators
+    TypeFamilies
+    TypeSynonymInstances
+    UndecidableInstances
+  ghc-options:
+    -fplugin=Effectful.Plugin
+    -Wall
+    -Wcompat
+    -Wincomplete-uni-patterns
+    -Wincomplete-record-updates
+    -Wredundant-constraints
+    -Wmissing-deriving-strategies
+    -Wno-duplicate-exports
+    -O
+    -threaded
+  mixins:
+    , base hiding (Prelude)
+    , relude (Relude as Prelude)
+    , relude
+
+executable mto
+  import:           c
+  hs-source-dirs:   src
+  main-is:          Main.hs
+  other-modules:
+    Data.Tree
+  build-depends:
+    , aeson
+    , amazonka
+    , amazonka-rds
+    , base
+    , containers
+    , co-log
+    , co-log-core
+    , effectful
+    , effectful-core
+    , effectful-co-log
+    , effectful-plugin
+    , optparse-applicative
+    , recursion-schemes
+    , relude
