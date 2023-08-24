@@ -12,9 +12,10 @@
         "aarch64-darwin"
       ];
     in
-      flake-utils.lib.eachSystem supportedSystems (system:
+    flake-utils.lib.eachSystem supportedSystems (system:
       let
-        overlays = [ haskellNix.overlay
+        overlays = [
+          haskellNix.overlay
           (final: prev: {
             memento =
               final.haskell-nix.hix.project {
@@ -25,8 +26,9 @@
           })
         ];
         pkgs = import nixpkgs { inherit system overlays; inherit (haskellNix) config; };
-        flake = pkgs.memento.flake {};
-      in flake // {
+        flake = pkgs.memento.flake { };
+      in
+      flake // {
         packages.default = flake."memento:exe:mto";
         formatter =
           let
@@ -45,8 +47,8 @@
     # This sets the flake to use the IOG nix cache.
     # Nix should ask for permission before using it,
     # but remove it here if you do not want it to.
-    extra-substituters = ["https://cache.iog.io"];
-    extra-trusted-public-keys = ["hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="];
+    extra-substituters = [ "https://cache.iog.io" ];
+    extra-trusted-public-keys = [ "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=" ];
     allow-import-from-derivation = "true";
   };
 }

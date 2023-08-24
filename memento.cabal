@@ -11,6 +11,7 @@ common c
     BlockArguments
     ConstraintKinds
     DataKinds
+    DeriveAnyClass
     DeriveFunctor
     DeriveGeneric
     DeriveTraversable
@@ -30,11 +31,12 @@ common c
     MultiParamTypeClasses
     NoFieldSelectors
     NumericUnderscores
+    OverloadedLists
     OverloadedRecordDot
     OverloadedStrings
     ScopedTypeVariables
     StandaloneDeriving
-    Strict
+    StrictData
     TupleSections
     TypeApplications
     TypeOperators
@@ -62,19 +64,43 @@ executable mto
   hs-source-dirs:   src
   main-is:          Main.hs
   other-modules:
-    Data.Tree
+    Aws.Types
+    Data.Aeson.Local
+    Data.Iso
+    Data.Text.Show
+    Data.TreeJson
+    Data.TreePath
+    Lens.Micro.Local
+    Memento.Cli
+    Memento.Types.Common
+    Memento.Types.Config
+    Memento.Types.Dynamic
+    Memento.Types.Lock
+    Memento.Types.Static
   build-depends:
     , aeson
+    , aeson-pretty
     , amazonka
     , amazonka-rds
     , base
+    , byteslice
+    , casing
+    , composition
     , containers
     , co-log
+    , chronos
     , co-log-core
+    , data-default-class
+    , data-default-instances-containers
     , effectful
-    , effectful-core
     , effectful-co-log
+    , effectful-core
     , effectful-plugin
+    , filepath
+    , microlens
+    , microlens-mtl
+    , microlens-th
     , optparse-applicative
     , recursion-schemes
     , relude
+    , template-haskell
