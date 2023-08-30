@@ -6,6 +6,7 @@ common c
   default-language:
     GHC2021
   default-extensions:
+    ApplicativeDo
     BangPatterns
     BinaryLiterals
     BlockArguments
@@ -70,13 +71,14 @@ executable mto
     Data.Text.Show
     Data.TreeJson
     Data.TreePath
-    Lens.Micro.Local
+    Control.Lens.Local
     Memento.Cli
     Memento.Types.Common
     Memento.Types.Config
     Memento.Types.Dynamic
     Memento.Types.Lock
     Memento.Types.Static
+    Orphans
   build-depends:
     , aeson
     , aeson-pretty
@@ -86,10 +88,10 @@ executable mto
     , byteslice
     , casing
     , composition
-    , containers
-    , co-log
     , chronos
+    , co-log
     , co-log-core
+    , containers
     , data-default-class
     , data-default-instances-containers
     , effectful
@@ -97,9 +99,8 @@ executable mto
     , effectful-core
     , effectful-plugin
     , filepath
-    , microlens
-    , microlens-mtl
-    , microlens-th
+    , lens
+    , lens-aeson
     , optparse-applicative
     , recursion-schemes
     , relude

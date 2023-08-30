@@ -29,6 +29,7 @@
         flake = pkgs.memento.flake { };
       in
       flake // {
+        lib = pkgs.callPackage ./nix/lib.nix { };
         packages.default = flake."memento:exe:mto";
         formatter =
           let

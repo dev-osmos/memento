@@ -1,87 +1,100 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 module Main where
 
-import Chronos (now, timeToDatetime)
-import Data.Aeson (FromJSON, eitherDecodeFileStrict)
+import Control.Lens (Ixed (ix), Lens, Lens', Prism, Prism', at, lens, preview, re, review, (%%=), (%=), (%~), (^?), _Just)
+import Data.Aeson (FromJSON, Object, eitherDecode, eitherDecodeFileStrict)
 import Data.Aeson.Encode.Pretty (encodePretty)
+import Data.Aeson.Lens (_String)
 import Data.Default.Class (Default (def))
-import Data.Foldable (maximum)
-import Data.Iso (Iso (Iso))
-import Data.Text qualified as Text (length, replicate)
 import Effectful (Eff, IOE, runEff, (:>))
-import Effectful.Dispatch.Dynamic (send)
-import Effectful.Fail (Fail, runFailIO)
+import Effectful.Error.Dynamic qualified as Eff (Error, runError, throwError)
 import Effectful.FileSystem (FileSystem, doesFileExist, runFileSystem)
+import Effectful.Process (Process, readProcess, runProcess)
 import Effectful.Reader.Dynamic qualified as Eff (Reader, runReader)
-import Effectful.State.Dynamic qualified as Eff (State (..), execStateShared, modify)
-import Lens.Micro ((%~))
-import Lens.Micro.Mtl (use)
-import Memento.Cli (Action (..), Cli (..), needsLogging)
-import Memento.Types.Config (ConfigFile)
-import Memento.Types.Lock (LockFile, LogEntry (..), logL)
+import Effectful.State.Dynamic qualified as Eff (State (..), execStateShared)
+import Memento.Cli (Action (..), Cli (..), pcli)
+import Memento.Types.Config (ConfigFile, subjectsL)
+import Memento.Types.Config qualified as Config (_Static)
+import Memento.Types.Lock (LockFile, locksL)
+import Memento.Types.Static (StaticConfig (..), StaticId (StaticId), StaticLock (..), StaticLocks, StaticSource (..), StaticVersion (..))
+import Options.Applicative (execParser, fullDesc, helper, info)
+import Orphans ()
 import System.FilePath ((</>))
 
-rootPath, lockFilePath, configFilePath :: FilePath
-rootPath = "etc"
-lockFilePath = rootPath </> "memento.lock.json"
-configFilePath = rootPath </> "memento.json" -- TODO: TOML
+fail' :: (ToText s, HasCallStack, Eff.Error Text :> r) => s -> Eff r a
+fail' e = withFrozenCallStack do
+  Eff.throwError (toText e)
 
-decodeJsonOrEmpty :: forall a r. (IOE :> r, Fail :> r, FileSystem :> r, Default a, FromJSON a) => FilePath -> Eff r a
+decodeJsonOrEmpty :: forall a r. (HasCallStack, IOE :> r, FileSystem :> r, Default a, FromJSON a, Eff.Error Text :> r) => FilePath -> Eff r a
 decodeJsonOrEmpty p = do
   doesFileExist p >>= \case
-    True -> liftIO (eitherDecodeFileStrict p) >>= either fail pure
+    True -> liftIO (eitherDecodeFileStrict p) >>= either fail' pure
     False -> pure def
 
-decodeJson :: (FromJSON a, IOE :> r, Fail :> r) => FilePath -> Eff r a
-decodeJson p = liftIO (eitherDecodeFileStrict p) >>= either fail pure
+decodeJson :: (FromJSON a, IOE :> r, Eff.Error Text :> r) => FilePath -> Eff r a
+decodeJson p = liftIO (eitherDecodeFileStrict p) >>= either fail' pure
 
 main :: IO ()
 main = runMain do
-  -- config <- either (fail . _1) pure =<< eitherDecodeFileStrict configFilePath
-  -- lock <- readJson @LockFile lockFilePath
-  -- putLBSLn $ "config = " <> encode config
-  -- putLBSLn $ "lock = " <> encode lock
-  pure ()
-  where
-    runMain = runEff . runFailIO . runFileSystem
-
-runIO action = runEff . runFailIO $ runFileSystem do
+  cli <- liftIO $ execParser $ info (pcli <**> helper) fullDesc
+  let
+    lockFilePath = cli.rootPath </> "memento.lock.json"
+    configFilePath = cli.rootPath </> "memento.json"
   config <- decodeJson configFilePath
   lock <- decodeJsonOrEmpty lockFilePath
   newLock <- Eff.runReader config do
     Eff.execStateShared lock do
-      runAndLog Cli {rootPath = "etc", comment = Just "testing", verbose = True, action}
+      run cli
+  writeFileLBS lockFilePath $ encodePretty newLock
+  where
+    runMain = runEff . runErrorWith putTextLn . runFileSystem . runProcess
+
+runErrorWith :: (IOE :> r) => (e -> Eff r ()) -> Eff (Eff.Error e : r) a -> Eff r a
+runErrorWith f = Eff.runError >=> either onError pure
+  where
+    onError (cs, err) = do
+      f err
+      putStrLn $ prettyCallStack cs
+      exitFailure
+
+runIO :: Action -> IO ()
+runIO action = runEff . runErrorWith putTextLn . runProcess $ runFileSystem do
+  let
+    lockFilePath = "etc" </> "memento.lock.json"
+    configFilePath = "etc" </> "memento.json"
+  config <- decodeJson configFilePath
+  lock <- decodeJsonOrEmpty lockFilePath
+  newLock <- Eff.runReader config do
+    Eff.execStateShared lock do
+      run Cli {rootPath = "etc", verbose = True, action}
   writeFileLBS lockFilePath $ encodePretty newLock
 
-instance (Eff.State s :> r, MonadState s (Eff r)) => MonadState s (Eff r) where
-  get = send Eff.Get
-  put = send . Eff.Put
+run :: (Eff.Reader ConfigFile :> r, Eff.State LockFile :> r, Process :> r, Eff.Error Text :> r, IOE :> r) => Cli -> Eff r ()
+run Cli {action} = case action of
+  Update {staticId} -> do
+    StaticConfig {source} <-
+      preview (subjectsL . ix (coerce staticId) . Config._Static) >>= \case
+        Nothing -> fail' @Text $ "No static with id = " <> show staticId <> " was found"
+        Just ok -> pure ok
+    locked <- fetchSource source
+    let newLock = StaticLock {original = source, locked}
+    changed <-
+      locksL . at (coerce staticId) . orDefault [] _Just %%= \case
+        xs@(h : _) | h == newLock -> (False, xs)
+        xs -> (True, newLock : xs)
+    unless changed do
+      putTextLn "Fresh version is already locked, lock file was not changed"
+  Switch {staticId, version, dynamics} -> pure ()
 
-run, runAndLog :: (Eff.Reader ConfigFile :> r, Eff.State LockFile :> r, IOE :> r) => Cli -> Eff r ()
-runAndLog cli = do
-  print cli
-  x <- run cli
-  when (needsLogging cli.action) do
-    datetime <- liftIO $ Iso . timeToDatetime <$> now
-    actor <- fmap toText <$> lookupEnv "USER"
-    Eff.modify $ logL %~ (LogEntry {action = cli.action, comment = cli.comment, datetime, actor} :)
-  pure x
-run Cli {action = Log} = do
-  log <- use logL
-  traverse_ putTextLn $ mkTable $ log <&> \LogEntry {action, datetime, actor, comment} -> [show datetime, fromMaybe mempty actor, fromMaybe mempty comment, show action]
-run Cli {action = Lock} = pure ()
-run _ = pure ()
+orDefault :: a -> Prism' s a -> Lens' s a
+orDefault d p = lens (fromMaybe d . preview p) (const (review p))
 
-mkTable :: [[Text]] -> [Text]
-mkTable = fmap unwords . padColumns
+fetchSource :: (Process :> r, Eff.Error Text :> r) => StaticSource -> Eff r StaticVersion
+fetchSource Git {url, ref} = nixPrefetchGit url ref
 
-padColumns :: [[Text]] -> [[Text]]
-padColumns rows =
-  let widths :: [Int] = transpose rows <&> maximum . fmap Text.length
-   in rows <&> \row -> zipWith padRight widths row
-
-padRight :: Int -> Text -> Text
-padRight width x
-  | Text.length x > width = error "padRight: Text.length x > width"
-  | otherwise = x <> Text.replicate (width - Text.length x) " "
+nixPrefetchGit :: (Process :> r, Eff.Error Text :> r) => Text -> Text -> Eff r StaticVersion
+nixPrefetchGit url ref = do
+  raw <- readProcess "nix-prefetch-git" ["--url", toString url, "--rev", toString ref] mempty
+  value :: Object <- either fail' pure . eitherDecode . toLazy $ encodeUtf8 raw
+  rev <- maybe (fail' @Text "`rev` not found in nix-prefetch-git output") pure $ value ^? ix "rev" . _String
+  sha256 <- maybe (fail' @Text "`sha256` not found in nix-prefetch-git output") pure $ value ^? ix "sha256" . _String
+  pure GitVersion {rev, sha256}

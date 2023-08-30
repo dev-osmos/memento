@@ -21,23 +21,24 @@ defaultOptions =
 
 newtype CompositeTags a = CompositeTags a
 
-sumOfWrappersOptions :: Options
-sumOfWrappersOptions = defaultOptions {sumEncoding = TwoElemArray, tagSingleConstructors = True, allNullaryToStringTag = False}
+compositeTagsOptions :: Options
+compositeTagsOptions = defaultOptions {sumEncoding = TwoElemArray, tagSingleConstructors = True, allNullaryToStringTag = False}
 
 instance (Generic a, GFromJSON Zero (Rep a), Rep a ~ D1 ('MetaData name m p nt) x, KnownSymbol name) => FromJSON (CompositeTags a) where
   parseJSON = withObject "CompositeTags a" \obj -> do
     let typeKey = quietSnake (typeName (Proxy @a)) <> ":type"
     t <- obj .: fromString typeKey
     let rest = if length obj > 1 then Object obj else Array mempty
-    fmap CompositeTags $ genericParseJSON sumOfWrappersOptions $ Array [t, rest]
+    fmap CompositeTags $ genericParseJSON compositeTagsOptions $ Array [t, rest]
 
 instance (Generic a, GToJSON' Value Zero (Rep a), Rep a ~ D1 ('MetaData name m p nt) x, KnownSymbol name) => ToJSON (CompositeTags a) where
   toJSON (CompositeTags s) =
     let typeKey = quietSnake (typeName (Proxy @a)) <> ":type"
-     in case genericToJSON sumOfWrappersOptions s of
+     in case genericToJSON compositeTagsOptions s of
           Array [t, Object v] -> Object $ fromString typeKey .= t <> v
-          -- \| Nullary constructor
+          -- Nullary constructor
           Array [t, Array []] -> Object $ fromString typeKey .= t
+          Array [_, Array _] -> error $ "CompositeTags.toJSON: while encoding `" <> toText typeKey <> "`: contents of constructor is not a record, but an array"
           other -> error $ "CompositeTags.toJSON: unreachable code: " <> show other
 
 typeName :: forall a name m p nt x proxy. (Rep a ~ D1 ('MetaData name m p nt) x, KnownSymbol name) => proxy a -> String

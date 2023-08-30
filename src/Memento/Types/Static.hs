@@ -1,15 +1,19 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Memento.Types.Static where
 
-import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON))
+import Control.Lens.Local (makeLenses)
+import Data.Aeson (FromJSON, FromJSONKey, ToJSON, ToJSONKey)
 import Data.Aeson.Local (CompositeTags (CompositeTags))
 import Data.Default.Instances.Containers ()
-import Data.Tree (Tree (..))
-import Data.TreeJson (TreeJson (TreeJson))
-import Data.TreePath (TreePath)
+import Memento.Types.Common (SubjectId)
 import Memento.Types.Dynamic (DynamicId, DynamicVersion)
 
-newtype StaticVersion = GitVersion {rev :: Text}
-  deriving stock (Show, Generic)
+newtype StaticId = StaticId SubjectId
+  deriving newtype (Eq, Ord, Show, IsString, FromJSON, FromJSONKey, ToJSON, ToJSONKey)
+
+data StaticVersion = GitVersion {rev, sha256 :: Text}
+  deriving stock (Show, Generic, Eq)
   deriving (FromJSON, ToJSON) via (CompositeTags StaticVersion)
 
 data StaticConfig = StaticConfig
@@ -19,33 +23,37 @@ data StaticConfig = StaticConfig
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
-data StaticLock = StaticLock
-  { history :: Tree StaticNodeLock
-  , current :: TreePath
-  }
-  deriving stock (Show)
+-- | Reverse-chronologically sorted (newest is first) locked versions
+type StaticLocks = [StaticLock]
 
-instance FromJSON StaticLock where
-  parseJSON = do
-    parseJSON >>> fmap \StaticLockJson {history = TreeJson history, current} -> StaticLock {history, current}
-
-instance ToJSON StaticLock where
-  toJSON StaticLock {history, current} = toJSON StaticLockJson {history = TreeJson history, current}
-
-data StaticLockJson = StaticLockJson
-  { history :: TreeJson StaticNodeLock
-  , current :: TreePath
-  }
-  deriving stock (Generic)
+data StaticLock = StaticLock {original :: StaticSource, locked :: StaticVersion}
+  deriving stock (Generic, Show, Eq)
   deriving anyclass (FromJSON, ToJSON)
 
+-- instance FromJSON StaticLocks where
+--   parseJSON = do
+--     parseJSON >>> fmap \StaticLocksJson {history = TreeJson history} -> StaticLocks {history}
+
+-- instance ToJSON StaticLocks where
+--   toJSON StaticLocks {history} = toJSON StaticLocksJson {history = TreeJson history}
+
+-- newtype StaticLocksJson = StaticLocksJson
+--   { history :: TreeJson StaticNodeLock
+--   -- , current :: TreePath
+--   }
+--   deriving stock (Generic)
+--   deriving anyclass (FromJSON, ToJSON)
+
 data StaticSource = Git {url :: Text, ref :: Text}
-  deriving stock (Show, Generic)
+  deriving stock (Show, Generic, Eq)
   deriving (FromJSON, ToJSON) via (CompositeTags StaticSource)
 
 data StaticNodeLock = StaticNodeLock
   { version :: StaticVersion
   , snapshots :: Map DynamicId DynamicVersion
+  -- ^ Snapshots of dymanics taken when switching OFF this static version
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
+
+makeLenses ''StaticLock
