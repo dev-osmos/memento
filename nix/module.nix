@@ -7,7 +7,7 @@ in
 {
   options.memento = {
     lockPath = mkOption {
-      type = types.nullOr types.package;
+      type = types.nullOr types.pathInStore;
       default = null;
     };
   };
