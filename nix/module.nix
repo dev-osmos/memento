@@ -14,6 +14,7 @@ in
   config = mkIf (cfg.lockPath != null) {
     systemd.services.memento-save-lock = {
       enable = true;
+      wantedBy = [ "multi-user.target" ];
       serviceConfig = {
         Type = "oneshot";
         ExecStart = pkgs.writeShellScript "memento-save-lock" ''
