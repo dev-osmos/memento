@@ -41,7 +41,9 @@
             ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt `${pkgs.fd}/bin/fd -g *.nix .`
           '';
         legacyPackages = pkgs;
-      });
+      }) // {
+        nixosModules.default = import ./nix/module.nix;
+      };
 
   # --- Flake Local Nix Configuration ----------------------------
   nixConfig = {
