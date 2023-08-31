@@ -1,6 +1,6 @@
 { config, lib, pkgs, ... }:
 let
-  inherit (lib) mkOption types;
+  inherit (lib) mkIf mkOption types;
   cfg = config.memento;
   inherit (import ./lib.nix) builtStaticsToJSON;
 in
