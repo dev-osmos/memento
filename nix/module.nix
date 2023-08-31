@@ -2,7 +2,7 @@
 let
   inherit (lib) mkIf mkOption types;
   cfg = config.memento;
-  inherit (import ./lib.nix) builtStaticsToJSON;
+  inherit (pkgs.callPackage ./lib.nix {}) builtStaticsToJSON;
 in
 {
   options.memento = {
