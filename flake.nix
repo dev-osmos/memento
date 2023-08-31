@@ -30,7 +30,7 @@
       in
       flake // {
         lib = pkgs.callPackage ./etc/nix/lib.nix { };
-        packages.default = flake."memento:exe:mto";
+        packages.default = flake.packages."memento:exe:mto";
         formatter =
           let
             inherit (pkgs.memento.tools { fourmolu = "latest"; }) fourmolu;
