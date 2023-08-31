@@ -44,7 +44,7 @@ data StaticLock = StaticLock {original :: StaticSource, locked :: StaticVersion}
 --   deriving stock (Generic)
 --   deriving anyclass (FromJSON, ToJSON)
 
-data StaticSource = Git {url :: Text, ref :: Text}
+data StaticSource = Git {url, ref, attribute :: Text}
   deriving stock (Show, Generic, Eq)
   deriving (FromJSON, ToJSON) via (CompositeTags StaticSource)
 
