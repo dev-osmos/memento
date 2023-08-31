@@ -22,6 +22,7 @@ in
           ${builtStaticsToJSON cfg.lockPath}
           EOF
         '';
+        RemainAfterExit = "yes";
       };
     };
   };
