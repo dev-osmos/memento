@@ -17,12 +17,14 @@ in
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = pkgs.writeShellScript "memento-save-lock" ''
-          mkdir -p /nix/var/nix/gcroots/memento/
-          cat << EOF > /nix/var/nix/gcroots/memento/memento.lock.json
-          ${builtStaticsToJSON cfg.lockPath}
-          EOF
-        '';
+        ExecStart =
+          let
+            lockFile = pkgs.writeText "memento.lock.json" (builtStaticsToJSON cfg.lockPath);
+          in
+            pkgs.writeShellScript "memento-save-lock" ''
+              mkdir -p /nix/var/nix/gcroots/memento/
+              ln -sf ${lockFile} /nix/var/nix/gcroots/memento/memento.lock.json
+            '';
         RemainAfterExit = "yes";
       };
     };
