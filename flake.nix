@@ -12,38 +12,41 @@
         "aarch64-darwin"
       ];
     in
-    flake-utils.lib.eachSystem supportedSystems (system:
-      let
-        overlays = [
-          haskellNix.overlay
-          (final: prev: {
-            memento =
-              final.haskell-nix.hix.project {
-                src = ./.;
-                # uncomment with your current system for `nix flake show` to work:
-                #evalSystem = "x86_64-linux";
-              };
-          })
-        ];
-        pkgs = import nixpkgs { inherit system overlays; inherit (haskellNix) config; };
-        flake = pkgs.memento.flake { };
-      in
-      flake // {
-        lib = pkgs.callPackage ./etc/nix/lib.nix { };
-        packages.default = flake.packages."memento:exe:mto";
-        formatter =
-          let
-            inherit (pkgs.memento.tools { fourmolu = "latest"; }) fourmolu;
-          in
-          pkgs.writeScriptBin "fourmolu-inline" ''
-            set -ex
-            ${fourmolu}/bin/fourmolu -i `${pkgs.fd}/bin/fd -g *.hs src`
-            ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt `${pkgs.fd}/bin/fd -g *.nix .`
-          '';
-        legacyPackages = pkgs;
-      }) // {
-        nixosModules.default = import ./nix/module.nix;
-      };
+    flake-utils.lib.eachSystem supportedSystems
+      (system:
+        let
+          overlays = [
+            haskellNix.overlay
+            (final: prev: {
+              memento = final.haskell-nix.hix.project { src = ./.; };
+            })
+          ];
+          pkgs = import nixpkgs { inherit system overlays; inherit (haskellNix) config; };
+          flake = pkgs.memento.flake { };
+        in
+        flake // {
+          lib = pkgs.callPackage ./nix/lib.nix { };
+          packages.default = pkgs.writeShellApplication {
+            name = "mto";
+            runtimeInputs = [ flake.packages."memento:exe:mto" pkgs.nix-prefetch-git ];
+            text = ''
+              mto "$@"
+            '';
+            checkPhase = "";
+          };
+          formatter =
+            let
+              inherit (pkgs.memento.tools { fourmolu = "latest"; }) fourmolu;
+            in
+            pkgs.writeScriptBin "fourmolu-inline" ''
+              set -ex
+              ${fourmolu}/bin/fourmolu -i `${pkgs.fd}/bin/fd -g *.hs src`
+              ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt `${pkgs.fd}/bin/fd -g *.nix .`
+            '';
+          legacyPackages = pkgs;
+        }) // {
+      nixosModules.default = import ./nix/module.nix;
+    };
 
   # --- Flake Local Nix Configuration ----------------------------
   nixConfig = {

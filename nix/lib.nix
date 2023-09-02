@@ -1,11 +1,11 @@
-{ lib, system }:
+{ lib, system, writeText }:
 let updateAttrByPath = path: update: lib.updateManyAttrsByPath [{ inherit path update; }];
 in
 rec {
-  loadStatics = path:
+  makeBuilt = path:
     let inherit (builtins) abort getFlake;
         lock = lib.importJSON path;
-        versionWithBuilt = version: version // {
+        versionWithBuilt = version: {
             built =
               if version.original."static_source:type" == "git" && version.locked."static_version:type" == "git_version" then
                 (getFlake "${version.original.url}?ref=${version.original.ref}&rev=${version.locked.rev}").packages."${system}"."${version.original.attribute}".outPath
@@ -19,5 +19,6 @@ rec {
         lockWithBuilt
         lock;
 
-  builtStaticsToJSON = path: builtins.toJSON (loadStatics path);
+  builtToJSON = path: builtins.toJSON (makeBuilt path);
+  builtToJSONFile = path: writeText "memento.built.json" (builtins.toJSON (makeBuilt path));
 }

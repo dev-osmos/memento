@@ -11,7 +11,8 @@ extra-deps:
 - chronos-1.1.5
 - crypton-0.33
 - git: https://codeberg.org/aka_dude/effectful-zoo
-  commit: ea70bae3cc06f6fb7a09e607e6cb251165492f70
+  commit: 376e83aeee9a0c927eb17499c7b82adc1e8d080c
+  # nix-sha256: 00sbzpjxa451i58ssjg1yvvcbfw9vifj9h1670n7sn4ifxcvnj0x
   subdirs:
   - effectful-co-log
 - typerep-map-0.6.0.0

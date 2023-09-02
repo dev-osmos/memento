@@ -6,6 +6,7 @@ import Control.Lens.Local (makeLenses)
 import Data.Aeson (FromJSON, FromJSONKey, ToJSON, ToJSONKey)
 import Data.Aeson.Local (CompositeTags (CompositeTags))
 import Data.Default.Instances.Containers ()
+import Data.Vector (Vector)
 import Memento.Types.Common (SubjectId)
 import Memento.Types.Dynamic (DynamicId, DynamicVersion)
 
@@ -18,13 +19,14 @@ data StaticVersion = GitVersion {rev, sha256 :: Text}
 
 data StaticConfig = StaticConfig
   { source :: StaticSource
-  , dynamics :: [DynamicId]
+  , dynamics :: Vector DynamicId
+  , upgradeOnNewVersion :: Bool
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
 -- | Reverse-chronologically sorted (newest is first) locked versions
-type StaticLocks = [StaticLock]
+type StaticLocks = Vector StaticLock
 
 data StaticLock = StaticLock {original :: StaticSource, locked :: StaticVersion}
   deriving stock (Generic, Show, Eq)

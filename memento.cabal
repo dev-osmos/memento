@@ -68,11 +68,14 @@ executable mto
     Aws.Types
     Data.Aeson.Local
     Data.Iso
+    Data.Map.Extra
     Data.Text.Show
+    Data.These
     Data.TreeJson
     Data.TreePath
     Control.Lens.Local
     Memento.Cli
+    Memento.Types.Built
     Memento.Types.Common
     Memento.Types.Config
     Memento.Types.Dynamic
@@ -105,3 +108,4 @@ executable mto
     , recursion-schemes
     , relude
     , template-haskell
+    , vector

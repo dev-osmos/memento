@@ -8,7 +8,7 @@ import Data.Default.Class (Default)
 import Data.Default.Instances.Containers ()
 import Memento.Types.Static (StaticId, StaticLocks)
 
-newtype LockFile = LockFile
+newtype LockDoc = LockDoc
   { locks :: Map StaticId StaticLocks
   -- , log :: [LogEntry]
   }
@@ -29,6 +29,6 @@ newtype LockFile = LockFile
 --   deriving stock (Generic)
 --   deriving anyclass (FromJSON, ToJSON)
 
-makeLenses ''LockFile
+makeLenses ''LockDoc
 
 -- makeLenses ''SubjectLocks
