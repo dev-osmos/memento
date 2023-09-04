@@ -8,7 +8,14 @@ rec {
         versionWithBuilt = version: {
             built =
               if version.original."static_source:type" == "git" && version.locked."static_version:type" == "git_version" then
-                (getFlake "${version.original.url}?ref=${version.original.ref}&rev=${version.locked.rev}").packages."${system}"."${version.original.attribute}".outPath
+                let flake = getFlake "${version.original.url}?ref=${version.original.ref}&rev=${version.locked.rev}";
+                    final =
+                      lib.attrByPath
+                        version.original.attribute
+                        (abort "Specified attribute not found")
+                        flake.packages."${system}";
+                in
+                  final.outPath
               else
                 abort "Only Git sources are currently supported";
           };

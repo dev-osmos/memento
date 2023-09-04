@@ -24,6 +24,7 @@ in
           in
             "${pkgs.memento}/bin/mto system upgrade --new-etc ${cfg.etc} --new-built ${built}";
         RemainAfterExit = "yes";
+        Restart = "no";
       };
     };
   };
