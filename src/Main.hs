@@ -1,7 +1,7 @@
 module Main where
 
-import Colog (Message, Severity (Debug, Error, Info, Warning), simpleMessageAction)
-import Control.Lens (Ixed (ix), Lens', Prism', at, from, lens, preview, review, (%%=), (^?), _Just)
+import Colog (Message, Severity (Debug, Error, Info), simpleMessageAction)
+import Control.Lens (Ixed (ix), Lens', Prism', at, from, lens, preview, review, (%%=), (^?), _Just, _head)
 import Data.Aeson (FromJSON, Object, eitherDecode, eitherDecodeFileStrict)
 import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Aeson.Lens (_String)
@@ -13,13 +13,13 @@ import Data.Set ((\\))
 import Data.Set qualified as Set (union)
 import Data.Text qualified as Text (intercalate)
 import Data.These (These (..))
-import Data.Vector qualified as Vector (uncons, zip)
+import Data.Vector qualified as Vector (zip)
 import Data.Vector.Lens (vector)
 import Effectful (Eff, IOE, runEff, (:>))
 import Effectful.Colog.Dynamic (Logger, log, runLogAction)
 import Effectful.Error.Dynamic qualified as Eff (Error, runError, throwError)
 import Effectful.FileSystem (FileSystem, createDirectoryIfMissing, createFileLink, doesFileExist, doesPathExist, makeAbsolute, removeFile, runFileSystem)
-import Effectful.Process (Process, readProcess, runProcess)
+import Effectful.Process (Process, callProcess, readProcess, runProcess)
 import Effectful.Reader.Dynamic qualified as Eff (Reader, runReader)
 import Effectful.State.Dynamic qualified as Eff (State (..), execStateShared)
 import Memento.Cli (Cli (..), ConfigAction (..), DynamicsSelection (..), Environment (..), SystemAction (..), pcli)
@@ -91,15 +91,15 @@ run Cli {environment} = case environment of
           for_ (Map.toList $ Map.zip lock.locks newLock.locks) \case
             (staticId, This _obsolete) -> do
               log Info $ "Not removing obsolete static " <> show staticId
-              log Info $ "To remove manually, run `rm -r " <> toText (pathFor staticId) <> "`"
+              log Info $ "To remove it manually, run `rm -r " <> toText (pathFor staticId) <> "`"
             (staticId, That _fresh) -> do
               log Info $ "Creating directory for fresh static " <> show staticId
               createDirectoryIfMissing False $ pathFor staticId
-              case Vector.uncons <$> (newBuilt.locks !? staticId) of
-                Nothing -> log Warning $ "Built-file does not contain " <> show staticId <> ", /current link will not be created"
-                Just Nothing -> log Warning $ "Built-file does not contain any versions for " <> show staticId <> ", /current link will not be created"
-                Just (Just (BuiltLock {built}, _)) -> do
-                  createFileLinkLogging built $ currentPathFor staticId
+              BuiltLock {built} <-
+                newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
+                  >>= preview _head .! "Built-file does not contain any versions for " <> show staticId
+              createFileLinkLogging built $ currentPathFor staticId
+              systemdRestart $ show staticId
             (staticId, These old new)
               | old == new -> log Debug $ "Static " <> show staticId <> " is unchanged"
               | otherwise -> case newConfig.subjects !? coerce staticId of
@@ -109,14 +109,11 @@ run Cli {environment} = case environment of
                     if upgradeOnNewVersion
                       then do
                         log Info $ "Upgrading " <> show staticId
-                        case Vector.uncons <$> (newBuilt.locks !? staticId) of
-                          Nothing -> do
-                            log Warning $ "Built-file does not contain " <> show staticId <> ", /current link will be removed"
-                            removeFile $ currentPathFor staticId
-                          Just Nothing -> do
-                            log Warning $ "Built-file does not contain any versions for " <> show staticId <> ", /current link will be removed"
-                            removeFile $ currentPathFor staticId
-                          Just (Just (BuiltLock {built}, _)) -> replaceFileLinkLogging built $ currentPathFor staticId
+                        BuiltLock {built} <-
+                          newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
+                            >>= preview _head .! "Built-file does not contain any versions for " <> show staticId
+                        replaceFileLinkLogging built $ currentPathFor staticId
+                        systemdRestart $ show staticId
                       else log Info $ "Upgrading on new version is disabled, skipping " <> show staticId
 
           log Info "Linking new /etc"
@@ -140,9 +137,9 @@ run Cli {environment} = case environment of
                   unspecifiedDyn = allDyn \\ selectedDyn
                   unknownDyn = selectedDyn \\ allDyn
                 unless (null unknownDyn) do
-                  fail' $ "Specified unknown dynamics: " <> Text.intercalate ", " (show <$> toList unknownDyn)
+                  fail' $ "Specified unknown dynamics: " <> commas (show <$> toList unknownDyn)
                 unless (null unspecifiedDyn) do
-                  fail' $ "Didn't specify dynamics (use --with or --without): " <> Text.intercalate ", " (show <$> toList unknownDyn)
+                  fail' $ "Didn't specify dynamics (use --with or --without): " <> commas (show <$> toList unspecifiedDyn)
                 pure $ fromList $ toList with
           thisLock <- lock.locks !? staticId <! "Lock does not contain " <> show staticId
           thisBuilt <- built.locks !? staticId <! "Built-file does not contain " <> show staticId
@@ -150,8 +147,10 @@ run Cli {environment} = case environment of
             lookupBy ((== version) . (.locked.rev)) (Vector.zip thisLock thisBuilt)
               <! "Lock does not contain specified version of "
               <> show staticId
-          log Info $ "Backing up " <> Text.intercalate ", " (show <$> toList toBackup) <> " (not really)"
+          unless (null toBackup) do
+            log Info $ "Backing up " <> commas (show <$> toList toBackup) <> " (not really)"
           replaceFileLinkLogging newCurrent $ currentPathFor staticId
+          systemdRestart $ show staticId
   Config {etc, configAction} ->
     inConfigEnv
       etc
@@ -170,6 +169,12 @@ run Cli {environment} = case environment of
               xs -> (True, newLock : xs)
           unless changed do
             putTextLn "Fresh version is already locked, lock file was not changed"
+
+systemdRestart :: (Process :> r) => String -> Eff r ()
+systemdRestart x = callProcess "systemctl" ["reload-or-try-restart", x]
+
+commas :: [Text] -> Text
+commas = Text.intercalate ", "
 
 (<!) :: (Eff.Error e :> r) => Maybe a -> e -> Eff r a
 Just x <! _ = pure x
