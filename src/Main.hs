@@ -25,7 +25,7 @@ import Effectful.State.Dynamic qualified as Eff (State (..), execStateShared)
 import Memento.Cli (Cli (..), ConfigAction (..), DynamicsSelection (..), Environment (..), SystemAction (..), pcli)
 import Memento.Types.Built (BuiltDoc (..), BuiltLock (BuiltLock, built))
 import Memento.Types.Common (SubjectId (SubjectId))
-import Memento.Types.Config (ConfigDoc (..), SubjectConfig (Dynamic, Static), subjectsL)
+import Memento.Types.Config (ConfigDoc (..), subjectsL)
 import Memento.Types.Config qualified as Config (_Static)
 import Memento.Types.Lock (LockDoc (..), locksL)
 import Memento.Types.Static (StaticConfig (..), StaticId (StaticId), StaticLock (..), StaticSource (..), StaticVersion (..))
@@ -95,26 +95,31 @@ run Cli {environment} = case environment of
             (staticId, That _fresh) -> do
               log Info $ "Creating directory for fresh static " <> show staticId
               createDirectoryIfMissing False $ pathFor staticId
+              StaticConfig {systemdService} <-
+                newConfig.subjects !? coerce staticId <! "Config does not contain " <> show staticId
+                  >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
               BuiltLock {built} <-
                 newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
                   >>= preview _head .! "Built-file does not contain any versions for " <> show staticId
               createFileLinkLogging built $ currentPathFor staticId
-              systemdRestart $ show staticId
+              when systemdService do
+                systemdRestart $ show staticId
             (staticId, These old new)
               | old == new -> log Debug $ "Static " <> show staticId <> " is unchanged"
-              | otherwise -> case newConfig.subjects !? coerce staticId of
-                  Nothing -> fail' $ "New config at " <> toText newConfigFilePath <> " misses entry for static " <> show staticId
-                  Just (Dynamic _) -> fail' @Text $ "New config lists " <> show staticId <> " as dynamic"
-                  Just (Static StaticConfig {upgradeOnNewVersion}) ->
-                    if upgradeOnNewVersion
-                      then do
-                        log Info $ "Upgrading " <> show staticId
-                        BuiltLock {built} <-
-                          newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
-                            >>= preview _head .! "Built-file does not contain any versions for " <> show staticId
-                        replaceFileLinkLogging built $ currentPathFor staticId
+              | otherwise -> do
+                  StaticConfig {systemdService, upgradeOnNewVersion} <-
+                    newConfig.subjects !? coerce staticId <! "Config does not contain " <> show staticId
+                      >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
+                  if upgradeOnNewVersion
+                    then do
+                      log Info $ "Upgrading " <> show staticId
+                      BuiltLock {built} <-
+                        newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
+                          >>= preview _head .! "Built-file does not contain any versions for " <> show staticId
+                      replaceFileLinkLogging built $ currentPathFor staticId
+                      when systemdService do
                         systemdRestart $ show staticId
-                      else log Info $ "Upgrading on new version is disabled, skipping " <> show staticId
+                    else log Info $ "Upgrading on new version is disabled, skipping " <> show staticId
 
           log Info "Linking new /etc"
           replaceFileLinkLogging newConfigFilePath configFilePath
@@ -124,7 +129,7 @@ run Cli {environment} = case environment of
           config :: ConfigDoc <- decodeJson configFilePath
           lock :: LockDoc <- decodeJson lockFilePath
           built :: BuiltDoc <- decodeJson builtFilePath
-          StaticConfig {dynamics} <-
+          StaticConfig {systemdService, dynamics} <-
             config.subjects !? coerce staticId <! "Config does not define " <> show staticId
               >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
           toBackup <-
@@ -150,7 +155,8 @@ run Cli {environment} = case environment of
           unless (null toBackup) do
             log Info $ "Backing up " <> commas (show <$> toList toBackup) <> " (not really)"
           replaceFileLinkLogging newCurrent $ currentPathFor staticId
-          systemdRestart $ show staticId
+          when systemdService do
+            systemdRestart $ show staticId
   Config {etc, configAction} ->
     inConfigEnv
       etc

@@ -21,6 +21,7 @@ data StaticConfig = StaticConfig
   { source :: StaticSource
   , dynamics :: Vector DynamicId
   , upgradeOnNewVersion :: Bool
+  , systemdService :: Bool
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
