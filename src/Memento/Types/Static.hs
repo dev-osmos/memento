@@ -20,8 +20,7 @@ data StaticVersion = GitVersion {rev, sha256 :: Text}
 data StaticConfig = StaticConfig
   { source :: StaticSource
   , dynamics :: Vector DynamicId
-  , upgradeOnNewVersion :: Bool
-  , systemdService :: Bool
+  , upgradeOnNewVersion, isSystemdService, forceReloadOrTryRestart :: Bool
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)

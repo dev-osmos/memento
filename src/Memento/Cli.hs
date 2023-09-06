@@ -1,5 +1,6 @@
 module Memento.Cli where
 
+import GHC.TypeLits (KnownSymbol, symbolVal)
 import Memento.Types.Dynamic (DynamicId)
 import Memento.Types.Static (StaticId)
 import Options.Applicative (Parser, command, flag', help, idm, info, long, metavar, short, strArgument, strOption, subparser, switch, value)
@@ -39,7 +40,12 @@ data SystemAction
   = -- | Update system with new config and lock
     Upgrade {newEtc, newBuiltPath :: FilePath}
   | -- | Switch a service or state to another version
-    Switch {staticId :: StaticId, version :: Text, dynamicsSelection :: DynamicsSelection}
+    Switch
+      { staticId :: StaticId
+      , version :: Text
+      , saveDynamics :: Selection "save" DynamicId
+      , restoreDynamics :: Maybe (Selection "restore" DynamicId)
+      }
   deriving stock (Show)
 
 psystemAction :: Parser SystemAction
@@ -53,22 +59,24 @@ psystemAction = subparser $ command "upgrade" (info pupgrade idm) <> command "sw
     pswitch = do
       staticId <- strArgument $ help "id of a static to switch" <> metavar "STATIC_ID"
       version <- strArgument $ help "new version (revision)" <> metavar "STATIC_VERSION"
-      dynamicsSelection <- pdynamicsSelection
-      pure Switch {staticId, version, dynamicsSelection}
+      saveDynamics <- pselection "save this dynamic before switching"
+      restoreDynamics <- optional $ pselection "restore this dynamic before switching"
+      pure Switch {staticId, version, saveDynamics, restoreDynamics}
 
-data DynamicsSelection
-  = WithAll
-  | Manual {with, without :: Set DynamicId}
+data Selection act a
+  = SelectAll
+  | Select {with, without :: Set a}
   deriving stock (Show)
 
-pdynamicsSelection :: Parser DynamicsSelection
-pdynamicsSelection = pwithAll <|> pmanual
+pselection :: forall act a. (KnownSymbol act, IsString a, Ord a) => String -> Parser (Selection act a)
+pselection actionHelp = pall <|> pselect
   where
-    pwithAll = flag' WithAll $ help "Backup all dynamics" <> long "with-all"
-    pmanual = do
-      with <- fmap fromList . many . strOption $ help "backup this dynamic before update" <> long "with"
-      without <- fmap fromList . many . strOption $ long "without"
-      pure Manual {with, without}
+    action = symbolVal (Proxy @act)
+    pall = flag' SelectAll $ help (action <> " all") <> long (action <> "-all")
+    pselect = do
+      with <- fmap fromList . many . strOption $ help actionHelp <> long action
+      without <- fmap fromList . many . strOption $ long ("no-" <> action)
+      pure Select {with, without}
 
 data ConfigAction
   = -- | Open and parse config and lock files

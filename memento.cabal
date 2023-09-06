@@ -66,22 +66,25 @@ executable mto
   main-is:          Main.hs
   other-modules:
     Aws.Types
+    Control.Lens.Local
     Data.Aeson.Local
-    Data.Iso
     Data.Map.Extra
     Data.Text.Show
     Data.These
     Data.TreeJson
     Data.TreePath
-    Control.Lens.Local
+    Effectful.Break
     Memento.Cli
+    Memento.System
     Memento.Types.Built
     Memento.Types.Common
     Memento.Types.Config
     Memento.Types.Dynamic
+    Memento.Types.History
     Memento.Types.Lock
     Memento.Types.Static
     Orphans
+    Utils
   build-depends:
     , aeson
     , aeson-pretty
@@ -91,7 +94,6 @@ executable mto
     , byteslice
     , casing
     , composition
-    , chronos
     , co-log
     , co-log-core
     , containers
@@ -108,4 +110,5 @@ executable mto
     , recursion-schemes
     , relude
     , template-haskell
+    , time
     , vector
