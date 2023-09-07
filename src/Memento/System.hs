@@ -33,7 +33,7 @@ import Memento.Types.Static (StaticConfig (..), StaticId (StaticId), StaticLock 
 import Orphans ()
 import System.Exit (ExitCode)
 import System.FilePath ((</>))
-import Utils (commas, createFileLinkLogging, decodeJsonDoc, decodeJsonDocOr, decodeJsonDocOrEmpty, encodeJsonDoc, fail', foldFirstEq, lookupBy, mapError, replaceFileLinkLogging, systemd, (.!), (<!))
+import Utils (commas, decodeJsonDoc, decodeJsonDocOr, decodeJsonDocOrEmpty, encodeJsonDoc, fail', foldFirstEq, lookupBy, mapError, replaceFileLinkLogging, systemd, (.!), (<!))
 
 root, etc, static, configFilePath, lockFilePath, builtFilePath :: FilePath
 root = "/nix/var/nix/gcroots/memento/"
@@ -79,7 +79,7 @@ run Upgrade {newEtc, newBuiltPath} = do
           BuiltLock {built} <-
             newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
               >>= preview _head .! "Built-file does not contain any versions for " <> show staticId
-          createFileLinkLogging built $ currentPathFor staticId
+          replaceFileLinkLogging built $ currentPathFor staticId
           when isSystemdService do
             systemd "start" staticId
         These old new

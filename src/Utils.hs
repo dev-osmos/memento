@@ -97,12 +97,6 @@ runErrorLogging = Eff.runError >=> either onError pure
       log Error $ toText $ prettyCallStack cs
       exitFailure
 
-createFileLinkLogging :: (Logger Message :> r, FileSystem :> r) => FilePath -> FilePath -> Eff r ()
-createFileLinkLogging source target = do
-  source' <- makeAbsolute source
-  log Info $ toText $ target <> " -> " <> source'
-  createFileLink source' target
-
 replaceFileLinkLogging :: (Logger Message :> es, FileSystem :> es) => FilePath -> FilePath -> Eff es ()
 replaceFileLinkLogging source target = do
   doesPathExist target >>= \case
@@ -110,4 +104,9 @@ replaceFileLinkLogging source target = do
       log Debug $ toText target <> " exists, removing"
       removeFile target
     False -> mempty
-  createFileLinkLogging source target
+  createFileLinkLogging
+  where
+    createFileLinkLogging = do
+      source' <- makeAbsolute source
+      log Info $ toText $ target <> " -> " <> source'
+      createFileLink source' target
