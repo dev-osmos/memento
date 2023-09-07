@@ -137,7 +137,7 @@ switch staticId version config lock built historyMb saveDynamics restoreDynamics
       log Info $ "Version " <> show version <> " is already last"
       Eff.break ()
   let history = historyMb & fromMaybe (initHistory version)
-  let isRollback = History.contains version history.history
+  let isRollback = isJust historyMb && History.contains version history.history
   StaticConfig {isSystemdService, forceReloadOrTryRestart, dynamics} <-
     config.subjects !? coerce staticId <! "Config does not define " <> show staticId
       >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
