@@ -7,7 +7,7 @@ import Control.Lens ((%~), (^..), (^?), _2, _head, _last)
 import Control.Lens.Local (makeLenses)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Vector (Vector)
-import Data.Vector qualified as Vector (any, reverse, snoc, toList)
+import Data.Vector qualified as Vector (any, cons, reverse, snoc, toList)
 import Memento.Types.Static (StaticVersion)
 
 newtype HistoryDoc = HistoryDoc
@@ -29,11 +29,15 @@ data HistoryGraph = HistoryGraph
   deriving stock (Generic)
   deriving anyclass (FromJSON, ToJSON)
 
+-- | Versions in chronological order: starting with genesis and ending with current
+versions :: HistoryGraph -> Vector StaticVersion
+versions HistoryGraph {genesis, descendants} = genesis `Vector.cons` fmap snd descendants
+
 contains :: StaticVersion -> HistoryGraph -> Bool
 contains v HistoryGraph {genesis, descendants} = genesis == v || Vector.any ((== v) . snd) (Vector.reverse descendants)
 
-lastVersion :: HistoryGraph -> StaticVersion
-lastVersion HistoryGraph {genesis, descendants} = fromMaybe genesis $ descendants ^? _last . _2
+currentVersion :: HistoryGraph -> StaticVersion
+currentVersion HistoryGraph {genesis, descendants} = fromMaybe genesis $ descendants ^? _last . _2
 
 -- | What versions did this version was switched to?
 childrenOf :: StaticVersion -> HistoryGraph -> [(ISO8601, StaticVersion)]

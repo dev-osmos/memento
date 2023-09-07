@@ -46,10 +46,15 @@ data SystemAction
       , saveDynamics :: Selection "save" DynamicId
       , restoreDynamics :: Maybe (Selection "restore" DynamicId)
       }
+  | Rollback
+      { staticId :: StaticId
+      , saveDynamics :: Selection "save" DynamicId
+      , restoreDynamicsRollback :: Selection "restore" DynamicId
+      }
   deriving stock (Show)
 
 psystemAction :: Parser SystemAction
-psystemAction = subparser $ command "upgrade" (info pupgrade idm) <> command "switch" (info pswitch idm)
+psystemAction = subparser $ command "upgrade" (info pupgrade idm) <> command "switch" (info pswitch idm) <> command "rollback" (info prollback idm)
   where
     pupgrade = do
       newEtc <- strOption $ help "path to directory with NEW config and lock" <> long "new-etc"
@@ -62,6 +67,12 @@ psystemAction = subparser $ command "upgrade" (info pupgrade idm) <> command "sw
       saveDynamics <- pselection "save this dynamic before switching"
       restoreDynamics <- optional $ pselection "restore this dynamic before switching"
       pure Switch {staticId, version, saveDynamics, restoreDynamics}
+
+    prollback = do
+      staticId <- strArgument $ help "id of a static to rollback" <> metavar "STATIC_ID"
+      saveDynamics <- pselection "save this dynamic before switching"
+      restoreDynamicsRollback <- pselection "restore this dynamic before rolling back"
+      pure Rollback {staticId, saveDynamics, restoreDynamicsRollback}
 
 data Selection act a
   = SelectAll

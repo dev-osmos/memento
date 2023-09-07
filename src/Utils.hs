@@ -1,3 +1,5 @@
+{-# LANGUAGE ImplicitParams #-}
+
 module Utils where
 
 import Colog (Message, Severity (Debug, Error, Info))
@@ -11,9 +13,11 @@ import Effectful (Eff, IOE, (:>))
 import Effectful.Colog.Dynamic (Logger, log)
 import Effectful.Error.Dynamic qualified as Eff (Error, runError, throwError)
 import Effectful.FileSystem (FileSystem, createFileLink, doesFileExist, doesPathExist, makeAbsolute, removeFile)
-import Effectful.Process (Process, callProcess, readProcess)
+import Effectful.Process (Process, readProcess, spawnProcess, waitForProcess)
+import Effectful.Transaction (Transaction, abort)
 import Memento.Types.Static (StaticId, StaticSource (..), StaticVersion (..))
 import Orphans ()
+import System.Exit (ExitCode (..))
 
 fail' :: (ToText s, HasCallStack, Eff.Error Text :> r) => s -> Eff r a
 fail' e = withFrozenCallStack do
@@ -57,17 +61,30 @@ nixPrefetchGit url ref = do
   sha256 <- value ^? ix "sha256" . _String <! "`sha256` not found in nix-prefetch-git output"
   pure GitVersion {rev, sha256}
 
-systemd :: (Process :> r) => String -> StaticId -> Eff r ()
-systemd op x = callProcess "systemctl" [op, show x]
+systemd :: (Process :> r, Transaction ExitCode :> r) => String -> StaticId -> Eff r ()
+systemd op x = do
+  p <- spawnProcess "systemctl" [op, show x]
+  e <- waitForProcess p
+  case e of
+    ExitSuccess -> mempty
+    ExitFailure _ -> abort e
+
+mapError :: (Eff.Error e :> r) => (e' -> e) -> Eff (Eff.Error e' : r) a -> Eff r a
+mapError f a =
+  Eff.runError a >>= \case
+    Right ok -> pure ok
+    Left (c, e) -> let ?callStack = c in Eff.throwError (f e)
 
 commas :: [Text] -> Text
 commas = Text.intercalate ", "
 
-(<!) :: (HasCallStack, Eff.Error e :> r) => Maybe a -> e -> Eff r a
+-- (<!) :: (HasCallStack, Eff.Error e :> r) => Maybe a -> e -> Eff r a
+(<!) :: (HasCallStack, Eff.Error Text :> r) => Maybe a -> Text -> Eff r a
 Just x <! _ = pure x
 Nothing <! e = Eff.throwError e
 
-(.!) :: (HasCallStack, Eff.Error e :> r) => (a -> Maybe b) -> e -> a -> Eff r b
+-- (.!) :: (HasCallStack, Eff.Error e :> r) => (a -> Maybe b) -> e -> a -> Eff r b
+(.!) :: (HasCallStack, Eff.Error Text :> r) => (a -> Maybe b) -> Text -> a -> Eff r b
 f .! e = (<! e) . f
 
 infix 5 <!, .!
