@@ -136,8 +136,8 @@ switch staticId version config lock built historyMb saveDynamics restoreDynamics
     when (History.currentVersion history.history == version) do
       log Info $ "Version " <> show version <> " is already last"
       Eff.break ()
-  let history = historyMb & fromMaybe (initHistory version)
-  let isRollback = isJust historyMb && History.contains version history.history
+  let
+    isRollback = maybe False (History.contains version . (.history)) historyMb
   StaticConfig {isSystemdService, forceReloadOrTryRestart, dynamics} <-
     config.subjects !? coerce staticId <! "Config does not define " <> show staticId
       >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
@@ -177,7 +177,8 @@ switch staticId version config lock built historyMb saveDynamics restoreDynamics
         then systemd "reload-or-try-restart" staticId
         else systemd "start" staticId
   now <- liftIO getCurrentTime
-  let newHistory = history & historyL %~ snd . History.switch (now ^. from _Time) version
+  let
+    newHistory = maybe (initHistory version) (historyL %~ snd . History.switch (now ^. from _Time) version) historyMb
   encodeJsonDoc (historyPathFor staticId) newHistory
 
 selectionIsComplete :: (HasCallStack, Ord a, Show a, Eff.Error Text :> r) => Text -> Set a -> Selection act a -> Eff r ()
