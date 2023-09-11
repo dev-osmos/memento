@@ -3,7 +3,7 @@
 module Memento.Types.History where
 
 import Amazonka (ISO8601)
-import Control.Lens ((%~), (^..), (^?), _2, _head, _last)
+import Control.Lens ((%~), (^..), (^?), _head, _last, view)
 import Control.Lens.Local (makeLenses)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Vector (Vector)
@@ -22,34 +22,45 @@ initHistory genesis = HistoryDoc {history = HistoryGraph {genesis, descendants =
 data HistoryGraph = HistoryGraph
   { genesis :: StaticVersion
   -- ^ The very first version of this static
-  , descendants :: Vector (ISO8601, StaticVersion)
+  , descendants :: Vector Descendant
   -- ^ Path through versions until current
   -- @ISO8601@ corresponds to switch time
   }
   deriving stock (Generic)
   deriving anyclass (FromJSON, ToJSON)
 
+data Descendant = Descendant
+  { switchTime :: ISO8601
+  , version :: StaticVersion
+  }
+  deriving stock (Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+makeLenses ''HistoryDoc
+makeLenses ''HistoryGraph
+makeLenses ''Descendant
+
 -- | Versions in chronological order: starting with genesis and ending with current
 versions :: HistoryGraph -> Vector StaticVersion
-versions HistoryGraph {genesis, descendants} = genesis `Vector.cons` fmap snd descendants
+versions HistoryGraph {genesis, descendants} = genesis `Vector.cons` fmap (view versionL) descendants
 
 contains :: StaticVersion -> HistoryGraph -> Bool
-contains v HistoryGraph {genesis, descendants} = genesis == v || Vector.any ((== v) . snd) (Vector.reverse descendants)
+contains v HistoryGraph {genesis, descendants} = genesis == v || Vector.any ((== v) . view versionL) (Vector.reverse descendants)
 
 currentVersion :: HistoryGraph -> StaticVersion
-currentVersion HistoryGraph {genesis, descendants} = fromMaybe genesis $ descendants ^? _last . _2
+currentVersion HistoryGraph {genesis, descendants} = fromMaybe genesis $ descendants ^? _last . versionL
 
 -- | What versions did this version was switched to?
-childrenOf :: StaticVersion -> HistoryGraph -> [(ISO8601, StaticVersion)]
+childrenOf :: StaticVersion -> HistoryGraph -> [Descendant]
 childrenOf v HistoryGraph {genesis, descendants} =
-  childrenFromDescendants ((error "unreachable expression", genesis) : Vector.toList descendants)
+  childrenFromDescendants (Descendant { switchTime = error "unreachable expression", version = genesis } : Vector.toList descendants)
   where
     childrenFromDescendants [] = []
-    childrenFromDescendants ((_, x) : xs) = memptyIfFalse (v == x) (xs ^.. _head) <> childrenFromDescendants xs
+    childrenFromDescendants (Descendant {version} : xs) = memptyIfFalse (v == version) (xs ^.. _head) <> childrenFromDescendants xs
 
 versionActiveTimeIntervals :: StaticVersion -> HistoryGraph -> [TimeInterval]
 versionActiveTimeIntervals v HistoryGraph {genesis, descendants} =
-  intervalsFromDescendants ((Infinite, genesis) : (first Finite <$> Vector.toList descendants))
+  intervalsFromDescendants $ (Infinite, genesis) : (Vector.toList descendants <&> \Descendant {switchTime, version} -> (Finite switchTime, version))
   where
     intervalsFromDescendants [] = []
     intervalsFromDescendants [(from, x)] = memptyIfFalse (v == x) [TimeInterval {from, until = Infinite}]
@@ -61,11 +72,8 @@ data IntervalBound a
   = Finite a
   | Infinite
 
-makeLenses ''HistoryDoc
-makeLenses ''HistoryGraph
-
 switch :: ISO8601 -> StaticVersion -> HistoryGraph -> (Bool, HistoryGraph)
 switch switchTime newVersion history = (isRollback, newHistory)
   where
-    newHistory = history & descendantsL %~ flip Vector.snoc (switchTime, newVersion)
+    newHistory = history & descendantsL %~ flip Vector.snoc Descendant {switchTime, version = newVersion}
     isRollback = history & contains newVersion
