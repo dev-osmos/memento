@@ -89,7 +89,7 @@ f .! e = (<! e) . f
 
 infix 5 <!, .!
 
-runErrorLogging :: (IOE :> r, Logger Message :> r) => Eff (Eff.Error Text : r) a -> Eff r a
+runErrorLogging :: (HasCallStack, IOE :> r, Logger Message :> r) => Eff (Eff.Error Text : r) a -> Eff r a
 runErrorLogging = Eff.runError >=> either onError pure
   where
     onError (cs, err) = do
@@ -97,7 +97,7 @@ runErrorLogging = Eff.runError >=> either onError pure
       log Error $ toText $ prettyCallStack cs
       exitFailure
 
-replaceFileLinkLogging :: (Logger Message :> es, FileSystem :> es) => FilePath -> FilePath -> Eff es ()
+replaceFileLinkLogging :: (HasCallStack, Logger Message :> es, FileSystem :> es) => FilePath -> FilePath -> Eff es ()
 replaceFileLinkLogging source target = do
   doesPathExist target >>= \case
     True -> do
