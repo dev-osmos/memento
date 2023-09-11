@@ -91,7 +91,8 @@ run Upgrade {newEtc, newBuiltPath} = do
                 then do
                   newVersion <- new ^? _head . lockedL <! "Lock for " <> show staticId <> " is empty"
                   thisBuilt <- newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
-                  switch staticId newVersion newConfig new thisBuilt Nothing SelectAll Nothing
+                  history :: HistoryDoc <- decodeJsonDoc (historyPathFor staticId)
+                  switch staticId newVersion newConfig new thisBuilt (Just history) SelectAll Nothing
                 else log Info $ "Upgrading on new version is disabled, skipping " <> show staticId
 
   log Info "Linking new /etc"
