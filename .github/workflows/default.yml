@@ -9,7 +9,8 @@ on:
       target_ref:
         description: Target repository's ref
         type: string
-        required: true
+        default: main
+        required: false
     secrets:
       MY_SSH_KEY:
         required: true
