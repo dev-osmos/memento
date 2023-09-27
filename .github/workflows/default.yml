@@ -71,4 +71,4 @@ jobs:
           git commit -m "Autoupdate $dependency"
           git push
 
-          cat "Deployment successfully requested!"
+          echo "Deployment successfully requested!"
