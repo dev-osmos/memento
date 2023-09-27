@@ -1,0 +1,68 @@
+name: Deployment
+on:
+  workflow_call:
+    inputs:
+      target_repository:
+        description: Repository with NixOS configuration
+        type: string
+        required: true
+      target_ref:
+        description: Target repository's ref
+        type: string
+        required: true
+    secrets:
+      MY_SSH_KEY:
+        required: true
+      DEVOPS_SSH_KEY:
+        required: true
+jobs:
+  request-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: DeterminateSystems/nix-installer-action@v4
+      - uses: actions/checkout@v3
+        with:
+          repository: ${{ inputs.target_repository }}
+          ref: ${{ inputs.target_ref }}
+          ssh-key: ${{ secrets.DEVOPS_SSH_KEY }}
+          ssh-strict: true
+      - name: Request deployment
+        shell: bash
+        env:
+          MY_SSH_KEY: ${{ secrets.MY_SSH_KEY }}
+          DEVOPS_SSH_KEY: ${{ secrets.DEVOPS_SSH_KEY }}
+        run: |
+          branch_re='^deploy/(.*)$'
+
+          function on_re_mismatch {
+            # non-standard branches are prohibited
+            echo "ERROR: $GITHUB_REF_NAME does not match 'deploy/*' format";
+            exit 1
+          }
+
+          umask 077
+          mkdir ~/.ssh
+          echo "$MY_SSH_KEY" > ~/.ssh/my
+
+          set -x
+
+          cat << EOF > ~/.ssh/config
+          Host github.com*
+            IdentityFile ~/.ssh/my
+            Hostname github.com
+          EOF
+
+          [[ $GITHUB_REF_NAME =~ $branch_re ]] \
+            && dependency=${BASH_REMATCH[1]} \
+            || on_re_mismatch
+
+          mto config update $dependency
+
+          git config user.email github-actions@github.com
+          git config user.name "Github Actions"
+
+          git add .
+          git commit -m "Autoupdate $dependency"
+          git push
+
+          cat "Deployment successfully requested!"
