@@ -57,7 +57,7 @@ jobs:
             && dependency=${BASH_REMATCH[1]} \
             || on_re_mismatch
 
-          mto config update $dependency
+          nix shell .#memento -c mto config update $dependency
 
           git config user.email github-actions@github.com
           git config user.name "Github Actions"
