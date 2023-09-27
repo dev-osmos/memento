@@ -63,9 +63,6 @@ run Upgrade {newEtc, newBuiltPath} = do
   lock :: LockDoc <- decodeJsonDocOrEmpty lockFilePath
 
   for_ (Map.toList $ Map.zip lock.locks newLock.locks) \(staticId, states) -> do
-    StaticConfig {upgradeOnNewVersion} <-
-      newConfig.subjects !? coerce staticId <! "Config does not contain " <> show staticId
-        >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
     mapError (\(c :: ExitCode) -> "systemd exited with code = " <> show c) $ runTransaction do
       case states of
         This _obsolete -> do
@@ -87,6 +84,9 @@ run Upgrade {newEtc, newBuiltPath} = do
         These old new
           | old == new -> log Debug $ "Static " <> show staticId <> " is unchanged"
           | otherwise -> do
+              StaticConfig {upgradeOnNewVersion} <-
+                newConfig.subjects !? coerce staticId <! "Config does not contain " <> show staticId
+                  >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
               if upgradeOnNewVersion
                 then do
                   newVersion <- new ^? _head . lockedL <! "Lock for " <> show staticId <> " is empty"
