@@ -27,7 +27,7 @@ import Memento.Types.Config (ConfigDoc (..))
 import Memento.Types.Config qualified as Config (_Static)
 import Memento.Types.Dynamic (DynamicId)
 import Memento.Types.History (HistoryDoc (..), historyL, initHistory)
-import Memento.Types.History qualified as History (contains, currentVersion, switch, versions, initHistory)
+import Memento.Types.History qualified as History (contains, currentVersion, initHistory, switch, versions)
 import Memento.Types.Lock (LockDoc (..))
 import Memento.Types.Static (StaticConfig (..), StaticId (StaticId), StaticLock (..), StaticVersion (..), lockedL)
 import Orphans ()
@@ -68,25 +68,36 @@ run Upgrade {newEtc, newBuiltPath} = do
         This _obsolete -> do
           log Info $ "Not removing obsolete static " <> show staticId
           log Info $ "To remove it manually, run `rm -r " <> toText (pathFor staticId) <> "`"
-          -- when isSystemdService do
-          --   systemd "stop" staticId
+        -- when isSystemdService do
+        --   systemd "stop" staticId
         That fresh -> do
           log Info $ "Creating directory for fresh static " <> show staticId
           createDirectoryIfMissing False $ pathFor staticId
           genesis <- fresh ^? _head . lockedL <! "Built-file does not contain any versions for " <> show staticId
           BuiltLock {built} <-
-            newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
-              >>= preview _head .! "Built-file does not contain any versions for " <> show staticId
+            newBuilt.locks
+              !? staticId
+              <! "Built-file does not contain "
+              <> show staticId
+              >>= preview _head
+              .! "Built-file does not contain any versions for "
+              <> show staticId
           replaceFileLinkLogging built $ currentPathFor staticId
           encodeJsonDoc (historyPathFor staticId) $ History.initHistory genesis
-          -- when isSystemdService do
-          --   systemd "start" staticId
+        -- when isSystemdService do
+        --   systemd "start" staticId
         These old new
           | old == new -> log Debug $ "Static " <> show staticId <> " is unchanged"
           | otherwise -> do
               StaticConfig {upgradeOnNewVersion} <-
-                newConfig.subjects !? coerce staticId <! "Config does not contain " <> show staticId
-                  >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
+                newConfig.subjects
+                  !? coerce staticId
+                  <! "Config does not contain "
+                  <> show staticId
+                  >>= preview Config._Static
+                  .! "Config does not define "
+                  <> show staticId
+                  <> " as a static"
               if upgradeOnNewVersion
                 then do
                   newVersion <- new ^? _head . lockedL <! "Lock for " <> show staticId <> " is empty"
@@ -142,8 +153,14 @@ switch staticId version config lock built historyMb saveDynamics restoreDynamics
   let
     isRollback = maybe False (History.contains version . (.history)) historyMb
   StaticConfig {isSystemdService, forceReloadOrTryRestart, dynamics} <-
-    config.subjects !? coerce staticId <! "Config does not define " <> show staticId
-      >>= preview Config._Static .! "Config does not define " <> show staticId <> " as a static"
+    config.subjects
+      !? coerce staticId
+      <! "Config does not define "
+      <> show staticId
+      >>= preview Config._Static
+      .! "Config does not define "
+      <> show staticId
+      <> " as a static"
   let dynamics' = fromList $ toList dynamics
   selectionIsComplete "dynamics" dynamics' saveDynamics
   when (isRollback && isNothing restoreDynamics) do

@@ -8,8 +8,10 @@ newtype TreeJson a = TreeJson (Tree a)
 instance (ToJSON a) => ToJSON (TreeJson a) where
   toJSON (TreeJson Node {rootLabel, subForest}) =
     Object $
-      "value" .= rootLabel
-        <> "children" .= (TreeJson <$> subForest)
+      "value"
+        .= rootLabel
+        <> "children"
+        .= (TreeJson <$> subForest)
 
 instance (FromJSON a) => FromJSON (TreeJson a) where
   parseJSON = fmap TreeJson . withObject "TreeJson" \obj -> Node <$> obj .: "value" <*> (fmap (coerce @(TreeJson a)) <$> obj .: "children")

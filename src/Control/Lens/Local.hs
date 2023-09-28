@@ -9,7 +9,7 @@ lensRules :: LensRules
 lensRules =
   Global.lensRules
     & lensField
-    .~ \_ _ n -> [TopName $! mkName $! nameBase n <> "L"]
+      .~ \_ _ n -> [TopName $! mkName $! nameBase n <> "L"]
 
 makeLenses :: Name -> DecsQ
 makeLenses = Global.makeLensesWith lensRules <> Global.makePrisms

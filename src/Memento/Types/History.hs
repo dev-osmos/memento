@@ -3,7 +3,7 @@
 module Memento.Types.History where
 
 import Amazonka (ISO8601)
-import Control.Lens ((%~), (^..), (^?), _head, _last, view)
+import Control.Lens (view, (%~), (^..), (^?), _head, _last)
 import Control.Lens.Local (makeLenses)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Vector (Vector)
@@ -53,7 +53,7 @@ currentVersion HistoryGraph {genesis, descendants} = fromMaybe genesis $ descend
 -- | What versions did this version was switched to?
 childrenOf :: StaticVersion -> HistoryGraph -> [Descendant]
 childrenOf v HistoryGraph {genesis, descendants} =
-  childrenFromDescendants (Descendant { switchTime = error "unreachable expression", version = genesis } : Vector.toList descendants)
+  childrenFromDescendants (Descendant {switchTime = error "unreachable expression", version = genesis} : Vector.toList descendants)
   where
     childrenFromDescendants [] = []
     childrenFromDescendants (Descendant {version} : xs) = memptyIfFalse (v == version) (xs ^.. _head) <> childrenFromDescendants xs
