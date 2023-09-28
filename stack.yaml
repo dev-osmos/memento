@@ -15,4 +15,4 @@ extra-deps:
   # nix-sha256: 00sbzpjxa451i58ssjg1yvvcbfw9vifj9h1670n7sn4ifxcvnj0x
   subdirs:
   - effectful-co-log
-- typerep-map-0.6.0.0
+- typerep-map-0.5.0.0

@@ -1,9 +1,14 @@
 {
-  # This is a template created by `hix init`
-  inputs.haskellNix.url = "github:input-output-hk/haskell.nix";
-  inputs.nixpkgs.follows = "haskellNix/nixpkgs-unstable";
-  inputs.flake-utils.follows = "haskellNix/flake-utils";
-  outputs = { self, nixpkgs, flake-utils, haskellNix }:
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/release-23.05";
+    stacklock2nix.url = "github:cdepillabout/stacklock2nix";
+    all-cabal-hashes = {
+      url = "github:commercialhaskell/all-cabal-hashes/hackage";
+      flake = false;
+    };
+  };
+
+  outputs = { self, nixpkgs, stacklock2nix, all-cabal-hashes }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -11,50 +16,53 @@
         "aarch64-linux"
         "aarch64-darwin"
       ];
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      pkgs = system: import nixpkgs { inherit system; overlays = [ stacklock2nix.overlay self.overlays.default ]; };
     in
-    flake-utils.lib.eachSystem supportedSystems
-      (system:
-        let
-          overlays = [
-            haskellNix.overlay
-            (final: prev: {
-              memento = final.haskell-nix.hix.project { src = ./.; };
-            })
-          ];
-          pkgs = import nixpkgs { inherit system overlays; inherit (haskellNix) config; };
-          flake = pkgs.memento.flake { };
-        in
-        flake // {
-          lib = pkgs.callPackage ./nix/lib.nix { };
-          packages.default = pkgs.writeShellApplication {
-            name = "mto";
-            runtimeInputs = [ flake.packages."memento:exe:mto" pkgs.nix-prefetch-git ];
-            text = ''
-              mto "$@"
-            '';
-            checkPhase = "";
+    {
+      overlays.default = final: prev: {
+        memento = final.memento-pkgSet.pkgSet.memento;
+        memento-pkgSet = final.stacklock2nix {
+          stackYaml = ./stack.yaml;
+          stackYamlLock = ./stack.yaml.lock;
+          baseHaskellPkgSet = final.haskell.packages.ghc928;
+          additionalHaskellPkgSetOverrides = hfinal: hprev: {
+            mkDerivation = a: hprev.mkDerivation (a // { doCheck = false; doHaddock = false; });
           };
-          formatter =
-            let
-              inherit (pkgs.memento.tools { fourmolu = "latest"; }) fourmolu;
-            in
-            pkgs.writeScriptBin "fourmolu-inline" ''
-              set -ex
-              ${fourmolu}/bin/fourmolu -i `${pkgs.fd}/bin/fd -g *.hs src`
-              ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt `${pkgs.fd}/bin/fd -g *.nix .`
-            '';
-          legacyPackages = pkgs;
-        }) // {
+          additionalDevShellNativeBuildInputs = stacklockHaskellPkgSet: [
+            final.stack
+            final.haskell.packages.ghc928.haskell-language-server
+          ];
+          inherit all-cabal-hashes;
+        };
+      };
+      lib = forAllSystems (system: (pkgs system).callPackage ./nix/lib.nix { });
       nixosModules.default = import ./nix/module.nix;
+      packages = forAllSystems (system: {
+        default = self.packages."${system}".memento;
+        memento-unwrapped = (pkgs system).memento;
+        memento = (pkgs system).writeShellApplication {
+          name = "mto";
+          runtimeInputs = [ self.packages."${system}".memento-unwrapped (pkgs system).nix-prefetch-git ];
+          text = ''
+            mto "$@"
+          '';
+          checkPhase = "";
+        };
+      });
+      devShells = forAllSystems (system: {
+        default = (pkgs system).memento-pkgSet.devShell;
+      });
+      formatter = forAllSystems (system:
+        let
+          inherit (pkgs system) fd haskell nixpkgs-fmt writeScriptBin;
+          inherit (haskell.packages.ghc928) fourmolu;
+        in
+        writeScriptBin "fourmolu-inline" ''
+          set -ex
+          ${fourmolu}/bin/fourmolu -i `${fd}/bin/fd -g *.hs src`
+          ${nixpkgs-fmt}/bin/nixpkgs-fmt `${fd}/bin/fd -g *.nix .`
+        '');
+      legacyPackages = forAllSystems pkgs;
     };
-
-  # --- Flake Local Nix Configuration ----------------------------
-  nixConfig = {
-    # This sets the flake to use the IOG nix cache.
-    # Nix should ask for permission before using it,
-    # but remove it here if you do not want it to.
-    extra-substituters = [ "https://cache.iog.io" ];
-    extra-trusted-public-keys = [ "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=" ];
-    allow-import-from-derivation = "true";
-  };
 }
