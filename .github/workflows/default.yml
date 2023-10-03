@@ -20,12 +20,12 @@ jobs:
   request-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: DeterminateSystems/nix-installer-action@v4
-        with:
-          extra-conf: |
-            extra-substituters = https://cache.iog.io https://iohk.cachix.org
-            extra-trusted-public-keys = cache.iog.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= iohk.cachix.org-1:DpRUyj7h7V830dp/i6Nti+NEO2/nhblbov/8MW7Rqoo=
-      - uses: DeterminateSystems/magic-nix-cache-action@v2
+      # - uses: DeterminateSystems/nix-installer-action@v4
+      #   with:
+      #     extra-conf: |
+      #       extra-substituters = https://cache.iog.io https://iohk.cachix.org
+      #       extra-trusted-public-keys = cache.iog.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= iohk.cachix.org-1:DpRUyj7h7V830dp/i6Nti+NEO2/nhblbov/8MW7Rqoo=
+      # - uses: DeterminateSystems/magic-nix-cache-action@v2
       - uses: actions/checkout@v3
         with:
           repository: ${{ inputs.target_repository }}
@@ -64,7 +64,7 @@ jobs:
 
           # nix shell github:dev-osmos/memento/${{ github.action_ref }} -c mto config update $dependency
           curl https://github.com/dev-osmos/memento/releases/download/v0.1.0/memento_v0.1.0_amd64.deb > memento.deb
-          dpkg -i memento.deb
+          sudo dpkg -i memento.deb
           mto config update $dependency
 
           git config user.email github-actions@github.com
