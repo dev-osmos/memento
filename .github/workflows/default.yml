@@ -63,8 +63,8 @@ jobs:
             || on_re_mismatch
 
           # nix shell github:dev-osmos/memento/${{ github.action_ref }} -c mto config update $dependency
-          curl -L https://github.com/dev-osmos/memento/releases/download/v0.1.0/memento_v0.1.0_amd64.deb -o memento.deb
-          sudo dpkg -i memento.deb
+          curl -L https://github.com/dev-osmos/memento/releases/download/v0.1.0/memento_v0.1.0_amd64.deb -o /tmp/memento.deb
+          sudo dpkg -i /tmp/memento.deb
           mto config update $dependency
 
           git config user.email github-actions@github.com
