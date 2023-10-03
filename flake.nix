@@ -25,13 +25,13 @@
         memento-pkgSet = final.stacklock2nix {
           stackYaml = ./stack.yaml;
           stackYamlLock = ./stack.yaml.lock;
-          baseHaskellPkgSet = final.haskell.packages.ghc928;
+          baseHaskellPkgSet = final.haskell.packages.ghc92;
           additionalHaskellPkgSetOverrides = hfinal: hprev: {
             mkDerivation = a: hprev.mkDerivation (a // { doCheck = false; doHaddock = false; });
           };
           additionalDevShellNativeBuildInputs = stacklockHaskellPkgSet: [
             final.stack
-            final.haskell.packages.ghc928.haskell-language-server
+            final.haskell.packages.ghc92.haskell-language-server
           ];
           inherit all-cabal-hashes;
         };
