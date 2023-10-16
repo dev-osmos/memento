@@ -1,11 +1,13 @@
 module Main where
 
-import Colog (Message, Severity (Info), simpleMessageAction)
+import Amazonka (discover, newEnv)
+import Colog (Message, Severity (Info, Warning), simpleMessageAction)
 import Control.Lens (Ixed (ix), at, from, preview, (%%=), _Just)
 import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Vector.Lens (vector)
 import Effectful (Eff, IOE, runEff, (:>))
 import Effectful.Colog.Dynamic (Logger, log, runLogAction)
+import Effectful.Concurrent (Concurrent, runConcurrent)
 import Effectful.Error.Dynamic qualified as Eff (Error)
 import Effectful.FileSystem (FileSystem, runFileSystem)
 import Effectful.Process (Process, runProcess)
@@ -28,11 +30,14 @@ main = runMain do
   cli <- liftIO $ execParser $ info (pcli <**> helper) fullDesc
   run cli
   where
-    runMain = runEff . runLogAction simpleMessageAction . runErrorLogging . runFileSystem . runProcess
+    runMain = runEff . runLogAction simpleMessageAction . runErrorLogging . runFileSystem . runProcess . runConcurrent
 
-run :: (HasCallStack, Process :> r, Eff.Error Text :> r, IOE :> r, FileSystem :> r, Logger Message :> r) => Cli -> Eff r ()
+run :: (HasCallStack, Process :> r, Eff.Error Text :> r, IOE :> r, FileSystem :> r, Logger Message :> r, Concurrent :> r) => Cli -> Eff r ()
 run Cli {environment} = case environment of
-  System {systemAction} -> System.run systemAction
+  System {systemAction} -> do
+    env <- newEnv discover
+    Eff.runReader env do
+      System.run systemAction
   Config {etc, configAction} ->
     inConfigEnv
       etc
@@ -50,7 +55,7 @@ run Cli {environment} = case environment of
               xs@(h : _) | h == newLock -> (False, xs)
               xs -> (True, newLock : xs)
           unless changed do
-            putTextLn "Fresh version is already locked, lock file was not changed"
+            log Warning "Fresh version is already locked, lock file was not changed"
 
 inConfigEnv ::
   (HasCallStack, Eff.Error Text :> r, IOE :> r, FileSystem :> r) =>

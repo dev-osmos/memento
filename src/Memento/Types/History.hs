@@ -72,6 +72,9 @@ data IntervalBound a
   = Finite a
   | Infinite
 
+makeLenses ''TimeInterval
+makeLenses ''IntervalBound
+
 switch :: ISO8601 -> StaticVersion -> HistoryGraph -> (Bool, HistoryGraph)
 switch switchTime newVersion history = (isRollback, newHistory)
   where

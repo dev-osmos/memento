@@ -1,8 +1,8 @@
 module Memento.System where
 
-import Amazonka (_Time)
+import Amazonka (Env, _Time)
 import Colog (Message, Severity (Debug, Info))
-import Control.Lens (from, ix, preview, (%~), (^.), (^?), _head)
+import Control.Lens (from, ix, preview, (%~), (^.), (^?), _head, _last)
 import Data.Map.Extra qualified as Map (zip)
 import Data.Map.Strict ((!?))
 import Data.Map.Strict qualified as Map (toList)
@@ -13,27 +13,30 @@ import Data.Time (getCurrentTime)
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector (findIndex, zip)
 import Effectful (Eff, IOE, (:>))
-import Effectful.Break (runBreak)
+import Effectful.Break (runBreakHomo)
 import Effectful.Break qualified as Eff (break)
 import Effectful.Colog.Dynamic (Logger, log)
+import Effectful.Concurrent (Concurrent)
 import Effectful.Error.Dynamic qualified as Eff (Error)
+import Effectful.Error.Dynamic.Extra ((.!), (<!))
 import Effectful.FileSystem (FileSystem, createDirectoryIfMissing, getSymbolicLinkTarget)
 import Effectful.Process (Process)
-import Effectful.Transaction (addAbortHandler, runTransaction)
-import Memento.Cli (Selection (..), SystemAction (..))
+import Effectful.Reader.Dynamic qualified as Eff (Reader)
+import Effectful.Transaction (addAbortHandler, runTransaction, (.!!), (<!!))
+import Memento.Cli (Selection (..), SystemAction (..), withNull)
 import Memento.Types.Built (BuiltDoc (..), BuiltLock (BuiltLock, built))
 import Memento.Types.Common (SubjectId (SubjectId))
 import Memento.Types.Config (ConfigDoc (..))
-import Memento.Types.Config qualified as Config (_Static)
-import Memento.Types.Dynamic (DynamicId)
-import Memento.Types.History (HistoryDoc (..), historyL, initHistory)
-import Memento.Types.History qualified as History (contains, currentVersion, initHistory, switch, versions)
+import Memento.Types.Config qualified as Config (_Dynamic, _Static)
+import Memento.Types.Dynamic (DynamicId (DynamicId), restore)
+import Memento.Types.History (HistoryDoc (..), TimeInterval (until), historyL, initHistory)
+import Memento.Types.History qualified as History (contains, currentVersion, initHistory, switch, versionActiveTimeIntervals, versions, _Finite)
 import Memento.Types.Lock (LockDoc (..))
 import Memento.Types.Static (StaticConfig (..), StaticId (StaticId), StaticLock (..), StaticVersion (..), lockedL)
 import Orphans ()
 import System.Exit (ExitCode)
 import System.FilePath ((</>))
-import Utils (commas, decodeJsonDoc, decodeJsonDocOr, decodeJsonDocOrEmpty, encodeJsonDoc, fail', foldFirstEq, lookupBy, mapError, replaceFileLinkLogging, systemd, (.!), (<!))
+import Utils
 
 root, etc, static, configFilePath, lockFilePath, builtFilePath :: FilePath
 root = "/nix/var/nix/gcroots/memento/"
@@ -48,7 +51,7 @@ pathFor (StaticId s) = static </> show s
 currentPathFor s = pathFor s </> "current"
 historyPathFor s = pathFor s </> "history.json"
 
-run :: (HasCallStack, Process :> r, Eff.Error Text :> r, IOE :> r, FileSystem :> r, Logger Message :> r) => SystemAction -> Eff r ()
+run :: (HasCallStack, Process :> r, Eff.Error Text :> r, IOE :> r, FileSystem :> r, Logger Message :> r, Eff.Reader Env :> r, Concurrent :> r) => SystemAction -> Eff r ()
 run Upgrade {newEtc, newBuiltPath} = do
   let
     newConfigFilePath = newEtc </> "memento.json"
@@ -103,14 +106,14 @@ run Upgrade {newEtc, newBuiltPath} = do
                   newVersion <- new ^? _head . lockedL <! "Lock for " <> show staticId <> " is empty"
                   thisBuilt <- newBuilt.locks !? staticId <! "Built-file does not contain " <> show staticId
                   history :: HistoryDoc <- decodeJsonDoc (historyPathFor staticId)
-                  switch staticId newVersion newConfig new thisBuilt (Just history) SelectAll Nothing
+                  switch staticId newVersion newConfig new thisBuilt (Just history {-SelectAll-}) Nothing
                 else log Info $ "Upgrading on new version is disabled, skipping " <> show staticId
 
   log Info "Linking new /etc"
   replaceFileLinkLogging newConfigFilePath configFilePath
   replaceFileLinkLogging newLockFilePath lockFilePath
   replaceFileLinkLogging newBuiltPath builtFilePath
-run Switch {staticId, version, saveDynamics, restoreDynamics} = do
+run Switch {staticId, version {-saveDynamics,-}, restoreDynamics} = do
   config :: ConfigDoc <- decodeJsonDoc configFilePath
   lock :: LockDoc <- decodeJsonDoc lockFilePath
   built :: BuiltDoc <- decodeJsonDoc builtFilePath
@@ -118,8 +121,8 @@ run Switch {staticId, version, saveDynamics, restoreDynamics} = do
   thisBuilt <- built.locks !? staticId <! "Built-file does not contain " <> show staticId
   version' <- foldFirstEq ((== version) . (.rev)) ((.locked) <$> thisLock) <! ""
   history :: HistoryDoc <- decodeJsonDocOr (historyPathFor staticId) $ initHistory version'
-  switch staticId version' config thisLock thisBuilt (Just history) saveDynamics restoreDynamics
-run Rollback {staticId, saveDynamics, restoreDynamicsRollback} = do
+  switch staticId version' config thisLock thisBuilt (Just history {-saveDynamics-}) restoreDynamics
+run Rollback {staticId {-saveDynamics,-}, restoreDynamicsRollback} = do
   config :: ConfigDoc <- decodeJsonDoc configFilePath
   lock :: LockDoc <- decodeJsonDoc lockFilePath
   built :: BuiltDoc <- decodeJsonDoc builtFilePath
@@ -132,20 +135,21 @@ run Rollback {staticId, saveDynamics, restoreDynamicsRollback} = do
       currentVersionIdx = versions & Vector.findIndex (== currentVersion) & fromMaybe (error "impossible: currentVersion was not found among versions")
   -- Parent of first occurence of current version is the target version
   newVersion <- versions ^? ix (currentVersionIdx - 1) <! "Cannot rollback " <> show staticId <> " any further: already at genesis"
-  switch staticId newVersion config thisLock thisBuilt (Just history) saveDynamics (Just restoreDynamicsRollback)
+  switch staticId newVersion config thisLock thisBuilt (Just history {-saveDynamics-}) (Just restoreDynamicsRollback)
 
 switch ::
-  (HasCallStack, Eff.Error Text :> r, IOE :> r, FileSystem :> r, Logger Message :> r, Process :> r) =>
+  forall r s'.
+  (HasCallStack, Eff.Error Text :> r, IOE :> r, FileSystem :> r, Logger Message :> r, Process :> r, Eff.Reader Env :> r, Concurrent :> r) =>
   StaticId ->
   StaticVersion ->
   ConfigDoc ->
   Vector StaticLock ->
   Vector BuiltLock ->
   Maybe HistoryDoc ->
-  Selection s DynamicId ->
+  -- Selection s DynamicId ->
   Maybe (Selection s' DynamicId) ->
   Eff r ()
-switch staticId version config lock built historyMb saveDynamics restoreDynamics = runBreak do
+switch staticId version config lock built historyMb {-saveDynamics-} restoreDynamics = runBreakHomo do
   for_ historyMb \history -> do
     when (History.currentVersion history.history == version) do
       log Info $ "Version " <> show version <> " is already last"
@@ -161,24 +165,49 @@ switch staticId version config lock built historyMb saveDynamics restoreDynamics
       .! "Config does not define "
       <> show staticId
       <> " as a static"
-  let dynamics' = fromList $ toList dynamics
-  selectionIsComplete "dynamics" dynamics' saveDynamics
+  let
+    dynamics' :: Set DynamicId
+    dynamics' = fromList $ toList dynamics
+  -- toSave = with' dynamics' saveDynamics
+
+  -- selectionIsComplete "dynamics" dynamics' saveDynamics
   when (isRollback && isNothing restoreDynamics) do
     fail' @Text "Action is a rollback, but restore selection wasn't specified"
   when (not isRollback && isJust restoreDynamics) do
     fail' @Text "Action is not a rollback, but restore selection was specified"
-  for_ restoreDynamics do
-    selectionIsComplete "dynamics" dynamics'
-  let toSave = with' dynamics' saveDynamics
-      toRestore = foldMap (with' dynamics') restoreDynamics
+  let restoreIsEmpty = null dynamics' || maybe True withNull restoreDynamics
+  -- (restoreAction :: Maybe (Eff r ())) <- for restoreDynamics \rd -> do
+  --   selectionIsComplete "dynamics" dynamics' rd
+  --   let toRestore = toList $ with' dynamics' rd
+  --   -- each but 1 restored dynamic must be also saved
+  --   restoreActions <- for toRestore \dynamicId -> do
+  --     let isSaved = Set.member dynamicId toSave
+  --     pure (isSaved, _restoreAction)
+  --   pure $ traverse_ snd restoreActions
+
+  let
+    restoreDynamicsOrEmpty = maybe [] (toList . with' dynamics') restoreDynamics
+  -- toRestore :: [(isSaved, (dynamicId, restoreAction))]
+  -- toRestore <- for restoreDynamicsOrEmpty \dynamicId -> do
+  --   let isSaved = Set.member dynamicId toSave
+  --   let restoreAction = do
+  --         _1
+  --   pure (isSaved, (dynamicId, restoreAction))
+  -- let
+  --   (saved, notSaved) = fmap2 (fmap snd) $ partition fst toRestore
+
+  -- when (length notSaved > 1) do
+  --   Eff.throwError $ "At most 1 dynamic can be restored and not saved, got: " <> commas (coerce @DynamicId . fst <$> notSaved)
+
   BuiltLock {built = newCurrent} <-
     lookupBy ((== version) . (.locked)) (Vector.zip lock built)
       <! "Lock does not contain specified version of "
       <> show staticId
+
   -- and action
-  mapError (\(c :: ExitCode) -> "systemd exited with code = " <> show c) $ runTransaction do
-    unless (null toSave) do
-      log Info $ "Saving " <> commas (show <$> toList toSave) <> " (not really)"
+  runTransaction do
+    -- unless (null toSave) do
+    --   log Info $ "Saving " <> commas (show <$> toList toSave)
 
     oldCurrent <- getSymbolicLinkTarget (currentPathFor staticId)
     addAbortHandler \_ -> do
@@ -187,18 +216,36 @@ switch staticId version config lock built historyMb saveDynamics restoreDynamics
     replaceFileLinkLogging newCurrent $ currentPathFor staticId
 
     when isSystemdService do
-      let reloadOrTryRestart = forceReloadOrTryRestart || null toRestore
+      let reloadOrTryRestart = forceReloadOrTryRestart || restoreIsEmpty
       unless reloadOrTryRestart do
         systemd "stop" staticId
-      for_ toRestore \dynamicId -> do
-        -- TODO: restore CURRENT version of dynamic on abort
-        log Info $ "Pretending to restore " <> show dynamicId <> "..."
+      when isRollback do
+        versionActiveLastInterval <-
+          historyMb
+            <!! "history is Nothing"
+            >>= preview _last . History.versionActiveTimeIntervals version . (.history) .!! "version was not active before"
+        versionActiveLastTime <- versionActiveLastInterval.until ^? History._Finite <!! "last interval has not ended"
+
+        for_ restoreDynamicsOrEmpty \dynamicId -> do
+          log Info $ "Restoring " <> show dynamicId
+          dynamicConfig <-
+            config.subjects
+              !? coerce dynamicId
+              <! "Config does not contain "
+              <> show dynamicId
+              >>= preview Config._Dynamic
+              .! "Config does not define "
+              <> show dynamicId
+              <> " as a dynamic"
+          restore dynamicConfig (versionActiveLastTime ^. _Time)
       if reloadOrTryRestart
         then systemd "reload-or-try-restart" staticId
         else systemd "start" staticId
   now <- liftIO getCurrentTime
   let
-    newHistory = maybe (initHistory version) (historyL %~ snd . History.switch (now ^. from _Time) version) historyMb
+    newHistory = case historyMb of
+      Nothing -> initHistory version
+      Just h -> h & historyL %~ snd . History.switch (now ^. from _Time) version
   encodeJsonDoc (historyPathFor staticId) newHistory
 
 selectionIsComplete :: (HasCallStack, Ord a, Show a, Eff.Error Text :> r) => Text -> Set a -> Selection act a -> Eff r ()

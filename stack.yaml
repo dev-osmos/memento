@@ -16,3 +16,6 @@ extra-deps:
   subdirs:
   - effectful-co-log
 - typerep-map-0.5.0.0
+nix:
+  enable: true
+  packages: [zlib]

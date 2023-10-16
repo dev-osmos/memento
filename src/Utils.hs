@@ -12,6 +12,7 @@ import Data.Text qualified as Text (intercalate)
 import Effectful (Eff, IOE, (:>))
 import Effectful.Colog.Dynamic (Logger, log)
 import Effectful.Error.Dynamic qualified as Eff (Error, runError, throwError)
+import Effectful.Error.Dynamic.Extra ((<!))
 import Effectful.FileSystem (FileSystem, createFileLink, doesFileExist, doesPathExist, makeAbsolute, removeFile)
 import Effectful.Process (Process, readProcess, spawnProcess, waitForProcess)
 import Effectful.Transaction (Transaction, abort)
@@ -61,13 +62,13 @@ nixPrefetchGit url ref = do
   sha256 <- value ^? ix "sha256" . _String <! "`sha256` not found in nix-prefetch-git output"
   pure GitVersion {rev, sha256}
 
-systemd :: (Process :> r, Transaction ExitCode :> r) => String -> StaticId -> Eff r ()
+systemd :: (Process :> r, Transaction Text :> r) => String -> StaticId -> Eff r ()
 systemd op x = do
   p <- spawnProcess "systemctl" [op, show x]
   e <- waitForProcess p
   case e of
     ExitSuccess -> mempty
-    ExitFailure _ -> abort e
+    ExitFailure _ -> abort $ "systemd exited with code = " <> show e
 
 mapError :: (Eff.Error e :> r) => (e' -> e) -> Eff (Eff.Error e' : r) a -> Eff r a
 mapError f a =
@@ -77,17 +78,6 @@ mapError f a =
 
 commas :: [Text] -> Text
 commas = Text.intercalate ", "
-
--- (<!) :: (HasCallStack, Eff.Error e :> r) => Maybe a -> e -> Eff r a
-(<!) :: (HasCallStack, Eff.Error Text :> r) => Maybe a -> Text -> Eff r a
-Just x <! _ = pure x
-Nothing <! e = Eff.throwError e
-
--- (.!) :: (HasCallStack, Eff.Error e :> r) => (a -> Maybe b) -> e -> a -> Eff r b
-(.!) :: (HasCallStack, Eff.Error Text :> r) => (a -> Maybe b) -> Text -> a -> Eff r b
-f .! e = (<! e) . f
-
-infix 5 <!, .!
 
 runErrorLogging :: (HasCallStack, IOE :> r, Logger Message :> r) => Eff (Eff.Error Text : r) a -> Eff r a
 runErrorLogging = Eff.runError >=> either onError pure
@@ -110,3 +100,6 @@ replaceFileLinkLogging source target = do
       source' <- makeAbsolute source
       log Info $ toText $ target <> " -> " <> source'
       createFileLink source' target
+
+fmap2 :: Bifunctor f => (a -> b) -> f a a -> f b b
+fmap2 f = bimap f f

@@ -1,3 +1,5 @@
+{-# LANGUAGE FieldSelectors #-}
+
 module Data.Map.Extra where
 
 import Data.Map.Strict (intersectionWith, (\\))

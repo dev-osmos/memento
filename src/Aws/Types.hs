@@ -14,3 +14,7 @@ newtype RdsInstanceId = RdsInstanceId Text
 newtype RdsSnapshotId = RdsSnapshotId Text
   deriving newtype (IsString, FromJSON, ToJSON)
   deriving (Show) via ShowTextUnpack
+
+newtype AmazonResourceName = ARN Text
+  deriving newtype (IsString, FromJSON, ToJSON)
+  deriving (Show) via ShowTextUnpack

@@ -1,15 +1,16 @@
 module Effectful.Break where
 
 import Effectful (Dispatch (Dynamic), DispatchOf, Eff, Effect, (:>))
-import Effectful.Dispatch.Dynamic (interpret, send)
+import Effectful.Dispatch.Dynamic (reinterpret, send)
+import Effectful.Error.Static qualified as Eff (runErrorNoCallStack, throwError)
 
-data Break a :: Effect where
-  Break :: a -> Break a m a
+data Break e :: Effect where
+  Break :: e -> Break e m a
 
-type instance DispatchOf (Break a) = 'Dynamic
+type instance DispatchOf (Break e) = 'Dynamic
 
-break :: (Break a :> r) => a -> Eff r a
+break :: (Break e :> r) => e -> Eff r a
 break = send . Break
 
-runBreak :: Eff (Break a : r) a -> Eff r a
-runBreak = interpret \_localEnv (Break x) -> pure x
+runBreakHomo :: Eff (Break a : r) a -> Eff r a
+runBreakHomo = reinterpret (fmap (either id id) . Eff.runErrorNoCallStack) \_localEnv (Break x) -> Eff.throwError x

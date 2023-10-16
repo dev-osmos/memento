@@ -69,11 +69,16 @@ executable mto
     Control.Lens.Local
     Data.Aeson.Local
     Data.Map.Extra
+    -- Data.MaxBy
     Data.Text.Show
     Data.These
     Data.TreeJson
     Data.TreePath
+    Effectful.Amazonka
     Effectful.Break
+    Effectful.Error.Dynamic.Extra
+    Effectful.Resource
+    Effectful.Retry
     Effectful.Transaction
     Memento.Cli
     Memento.System
@@ -89,6 +94,7 @@ executable mto
   build-depends:
     , aeson
     , aeson-pretty
+    , amazonka-core
     , amazonka
     , amazonka-rds
     , base
@@ -97,6 +103,7 @@ executable mto
     , composition
     , co-log
     , co-log-core
+    , conduit
     , containers
     , data-default-class
     , data-default-instances-containers
@@ -111,6 +118,7 @@ executable mto
     , optparse-applicative
     , recursion-schemes
     , relude
+    , resourcet
     , template-haskell
     , time
     , vector

@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/release-23.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     stacklock2nix.url = "github:cdepillabout/stacklock2nix";
     all-cabal-hashes = {
       url = "github:commercialhaskell/all-cabal-hashes/hackage";
@@ -17,7 +17,13 @@
         "aarch64-darwin"
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-      pkgs = system: import nixpkgs { inherit system; overlays = [ stacklock2nix.overlay self.overlays.default ]; };
+      pkgs = system: import nixpkgs {
+        inherit system;
+        overlays = [
+          stacklock2nix.overlay
+          self.overlays.default
+        ];
+      };
     in
     {
       overlays.default = final: prev: {
@@ -30,7 +36,7 @@
             mkDerivation = a: hprev.mkDerivation (a // { doCheck = false; doHaddock = false; });
           };
           additionalDevShellNativeBuildInputs = stacklockHaskellPkgSet: [
-            final.stack
+            final.cabal-install
             final.haskell.packages.ghc92.haskell-language-server
           ];
           inherit all-cabal-hashes;
@@ -51,7 +57,20 @@
         };
       });
       devShells = forAllSystems (system: {
-        default = (pkgs system).memento-pkgSet.devShell;
+        default = (pkgs system).memento-pkgSet.devShell.overrideAttrs (a: {
+          shellHook =
+            (a.shellHook or "") +
+            ''
+              export NIX_PATH=nixpkgs=${nixpkgs}
+            '';
+        });
+        stack = (pkgs system).mkShell {
+          packages = [ (pkgs system).stack ];
+          shellHook =
+            ''
+              export NIX_PATH=nixpkgs=${nixpkgs}
+            '';
+        };
       });
       formatter = forAllSystems (system:
         let

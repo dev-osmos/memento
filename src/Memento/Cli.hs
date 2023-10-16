@@ -43,13 +43,13 @@ data SystemAction
     Switch
       { staticId :: StaticId
       , version :: Text
-      , saveDynamics :: Selection "save" DynamicId
-      , restoreDynamics :: Maybe (Selection "restore" DynamicId)
+      , -- , saveDynamics :: Selection "save" DynamicId
+        restoreDynamics :: Maybe (Selection "restore" DynamicId)
       }
   | Rollback
       { staticId :: StaticId
-      , saveDynamics :: Selection "save" DynamicId
-      , restoreDynamicsRollback :: Selection "restore" DynamicId
+      , -- , saveDynamics :: Selection "save" DynamicId
+        restoreDynamicsRollback :: Selection "restore" DynamicId
       }
   deriving stock (Show)
 
@@ -64,20 +64,24 @@ psystemAction = subparser $ command "upgrade" (info pupgrade idm) <> command "sw
     pswitch = do
       staticId <- strArgument $ help "id of a static to switch" <> metavar "STATIC_ID"
       version <- strArgument $ help "new version (revision)" <> metavar "STATIC_VERSION"
-      saveDynamics <- pselection "save this dynamic before switching"
+      -- saveDynamics <- pselection "save this dynamic before switching"
       restoreDynamics <- optional $ pselection "restore this dynamic before switching"
-      pure Switch {staticId, version, saveDynamics, restoreDynamics}
+      pure Switch {staticId, version, restoreDynamics}
 
     prollback = do
       staticId <- strArgument $ help "id of a static to rollback" <> metavar "STATIC_ID"
-      saveDynamics <- pselection "save this dynamic before switching"
+      -- saveDynamics <- pselection "save this dynamic before switching"
       restoreDynamicsRollback <- pselection "restore this dynamic before rolling back"
-      pure Rollback {staticId, saveDynamics, restoreDynamicsRollback}
+      pure Rollback {staticId, restoreDynamicsRollback}
 
 data Selection act a
   = SelectAll
   | Select {with, without :: Set a}
   deriving stock (Show)
+
+withNull :: Selection act a -> Bool
+withNull SelectAll = False
+withNull Select {with} = null with
 
 pselection :: forall act a. (KnownSymbol act, IsString a, Ord a) => String -> Parser (Selection act a)
 pselection actionHelp = pall <|> pselect

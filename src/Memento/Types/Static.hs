@@ -8,7 +8,7 @@ import Data.Aeson.Local (CompositeTags (CompositeTags))
 import Data.Default.Instances.Containers ()
 import Data.Vector (Vector)
 import Memento.Types.Common (SubjectId)
-import Memento.Types.Dynamic (DynamicId, DynamicVersion)
+import Memento.Types.Dynamic (DynamicId)
 
 newtype StaticId = StaticId SubjectId
   deriving newtype (Eq, Ord, Show, IsString, FromJSON, FromJSONKey, ToJSON, ToJSONKey)
@@ -50,12 +50,12 @@ data StaticSource = Git {url, ref :: Text, attribute :: [Text]}
   deriving stock (Show, Generic, Eq)
   deriving (FromJSON, ToJSON) via (CompositeTags StaticSource)
 
-data StaticNodeLock = StaticNodeLock
-  { version :: StaticVersion
-  , snapshots :: Map DynamicId DynamicVersion
-  -- ^ Snapshots of dymanics taken when switching OFF this static version
-  }
-  deriving stock (Show, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+-- data StaticNodeLock = StaticNodeLock
+--   { version :: StaticVersion
+--   , snapshots :: Map DynamicId DynamicVersion
+--   -- ^ Snapshots of dymanics taken when switching OFF this static version
+--   }
+--   deriving stock (Show, Generic)
+--   deriving anyclass (FromJSON, ToJSON)
 
 makeLenses ''StaticLock
